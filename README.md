@@ -11,7 +11,7 @@ WebCraftOps는 웹 기반 Minecraft Ops 콘솔, 3D 월드 에디터, 블루프�
 - `packages/shared`: 공통 데이터 모델 및 API 계약
 - `packages/bridge-core`: Bridge 코어 어댑터 인터페이스
 - `packages/bridge-mock`: Bridge 모의 서버 (Registry Dump 테스트용)
-- `packages/frontend`: 웹 프런트엔드 (서버 선택/팔레트 UI)
+- `packages/frontend`: 웹 프런트엔드 (서버 선택/팔레트/Edit Job UI)
 - `packages/backend`: 웹 백엔드 (서버 프로필/브릿지 테스트)
 
 ## 폴더 구조

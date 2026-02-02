@@ -9,7 +9,9 @@ import {
   pauseEditJob,
   resumeEditJob,
   runEditJob,
+  updateEditJobMetrics,
 } from "./edit-jobs";
+import { listAuditEntries } from "./audit-log";
 
 type ServerProfile = {
   id: string;
@@ -233,6 +235,29 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (req.method === "GET" && pathname === "/audit") {
+    const userId = url.searchParams.get("userId") ?? undefined;
+    const worldId = url.searchParams.get("worldId") ?? undefined;
+    const commandType = url.searchParams.get("commandType") ?? undefined;
+    const since = url.searchParams.get("since") ?? undefined;
+    const until = url.searchParams.get("until") ?? undefined;
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    sendJson(
+      res,
+      200,
+      listAuditEntries({
+        userId,
+        worldId,
+        commandType,
+        since,
+        until,
+        limit,
+      }),
+    );
+    return;
+  }
+
   if (req.method === "GET" && pathname.startsWith("/bridge/edit/jobs/")) {
     const jobId = pathname.replace("/bridge/edit/jobs/", "");
     const job = getEditJob(jobId);
@@ -240,6 +265,19 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
       return;
     }
+    sendJson(res, 200, job);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/metrics")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/metrics", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    const body = await readJsonBody<{ mspt?: number; tps?: number }>(req);
+    updateEditJobMetrics(job, { mspt: body?.mspt, tps: body?.tps });
     sendJson(res, 200, job);
     return;
   }

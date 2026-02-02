@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { recordAuditEntry } from "./audit-log";
 
 export type CommandType = "setBlock" | "fill" | "replace" | "pasteBlueprint" | "clone";
 
@@ -62,11 +63,19 @@ export type EditJobStats = {
   doneBlocks: number;
   mspt: number;
   tps: number;
+  batchSize: number;
+  delayMs: number;
 };
 
 export type EditJobPolicy = {
   adaptiveThrottle: boolean;
   tpsPauseThreshold: number;
+  msptLowerBound: number;
+  msptUpperBound: number;
+  batchSizeMin: number;
+  batchSizeMax: number;
+  delayMsMin: number;
+  delayMsMax: number;
 };
 
 export type EditJob = {
@@ -94,12 +103,20 @@ export const createEditJob = (worldId: string, createdBy: string, commands: Comm
     policy: {
       adaptiveThrottle: true,
       tpsPauseThreshold: 15,
+      msptLowerBound: 35,
+      msptUpperBound: 45,
+      batchSizeMin: 50,
+      batchSizeMax: 500,
+      delayMsMin: 0,
+      delayMsMax: 200,
     },
     stats: {
       estimatedBlocks: commands.length * 10,
       doneBlocks: 0,
       mspt: 0,
       tps: 20,
+      batchSize: 200,
+      delayMs: 0,
     },
     commands,
     createdAt: now,
@@ -120,6 +137,7 @@ export const runEditJob = async (job: EditJob) => {
     worldId: job.worldId,
     estimatedBlocks: job.stats.estimatedBlocks,
   };
+  const startedAt = Date.now();
 
   try {
     for (const payload of job.commands) {
@@ -128,6 +146,19 @@ export const runEditJob = async (job: EditJob) => {
       job.stats.doneBlocks += 10;
     }
     updateJob(job, "completed");
+    const durationMs = Date.now() - startedAt;
+    job.commands.forEach((payload) => {
+      recordAuditEntry({
+        userId: job.createdBy,
+        mcUuid: job.createdBy,
+        worldId: job.worldId,
+        commandType: payload.type,
+        params: payload.params,
+        estimatedBlocks: job.stats.estimatedBlocks,
+        durationMs,
+        createdAt: new Date().toISOString(),
+      });
+    });
   } catch (error) {
     updateJob(job, "failed");
     throw error;
@@ -148,4 +179,39 @@ export const resumeEditJob = (job: EditJob) => {
 
 export const cancelEditJob = (job: EditJob) => {
   updateJob(job, "canceled");
+};
+
+export const updateEditJobMetrics = (
+  job: EditJob,
+  metrics: { mspt?: number; tps?: number },
+) => {
+  if (typeof metrics.mspt === "number") {
+    job.stats.mspt = metrics.mspt;
+  }
+  if (typeof metrics.tps === "number") {
+    job.stats.tps = metrics.tps;
+  }
+  if (job.stats.tps < job.policy.tpsPauseThreshold) {
+    updateJob(job, "paused");
+    return;
+  }
+  if (job.status === "paused" && job.stats.tps >= job.policy.tpsPauseThreshold) {
+    updateJob(job, "running");
+  }
+
+  if (!job.policy.adaptiveThrottle || typeof metrics.mspt !== "number") {
+    return;
+  }
+
+  if (job.stats.mspt < job.policy.msptLowerBound) {
+    job.stats.batchSize = Math.min(job.stats.batchSize + 25, job.policy.batchSizeMax);
+    job.stats.delayMs = Math.max(job.stats.delayMs - 10, job.policy.delayMsMin);
+    return;
+  }
+
+  if (job.stats.mspt > job.policy.msptUpperBound) {
+    job.stats.batchSize = Math.max(job.stats.batchSize - 25, job.policy.batchSizeMin);
+    job.stats.delayMs = Math.min(job.stats.delayMs + 10, job.policy.delayMsMax);
+    return;
+  }
 };

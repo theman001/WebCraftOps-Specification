@@ -31,6 +31,12 @@ export type RegistryDump = {
 export type EditJobPolicy = {
   adaptiveThrottle: boolean;
   tpsPauseThreshold: number;
+  msptLowerBound: number;
+  msptUpperBound: number;
+  batchSizeMin: number;
+  batchSizeMax: number;
+  delayMsMin: number;
+  delayMsMax: number;
 };
 
 export type EditJobStats = {
@@ -38,6 +44,8 @@ export type EditJobStats = {
   doneBlocks: number;
   mspt: number;
   tps: number;
+  batchSize: number;
+  delayMs: number;
 };
 
 export type EditJobStatus = "queued" | "running" | "paused" | "completed" | "failed" | "canceled";
