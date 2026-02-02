@@ -47,8 +47,22 @@ const renderPalette = (blocks) => {
       ? `render: ${block.renderHint.type}`
       : "render: none";
 
+    const properties = document.createElement("small");
+    const propertyKeys = Object.keys(block.properties ?? {});
+    properties.textContent =
+      propertyKeys.length > 0
+        ? `속성: ${propertyKeys.join(", ")}`
+        : "속성: 없음";
+
+    const defaults = document.createElement("small");
+    defaults.textContent = block.defaultState
+      ? `기본 상태: ${JSON.stringify(block.defaultState)}`
+      : "기본 상태: 없음";
+
     card.appendChild(title);
     card.appendChild(hint);
+    card.appendChild(properties);
+    card.appendChild(defaults);
     paletteGrid.appendChild(card);
   });
 };
