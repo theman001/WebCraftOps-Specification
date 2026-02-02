@@ -31,6 +31,7 @@ const auditWorldIdInput = document.getElementById("auditWorldId");
 const auditCommandTypeInput = document.getElementById("auditCommandType");
 const auditSinceInput = document.getElementById("auditSince");
 const auditUntilInput = document.getElementById("auditUntil");
+const auditLimitInput = document.getElementById("auditLimit");
 const refreshAuditButton = document.getElementById("refreshAuditButton");
 const auditStatus = document.getElementById("auditStatus");
 const auditList = document.getElementById("auditList");
@@ -192,6 +193,9 @@ const fetchAuditEntries = async (backendUrl, filters) => {
   }
   if (filters.until) {
     params.set("until", filters.until);
+  }
+  if (typeof filters.limit === "number" && !Number.isNaN(filters.limit)) {
+    params.set("limit", String(filters.limit));
   }
   const query = params.toString();
   const response = await fetch(`${backendUrl}/audit${query ? `?${query}` : ""}`);
@@ -519,6 +523,7 @@ const loadAuditEntries = async () => {
       commandType: auditCommandTypeInput.value.trim() || undefined,
       since: auditSinceInput.value ? new Date(auditSinceInput.value).toISOString() : undefined,
       until: auditUntilInput.value ? new Date(auditUntilInput.value).toISOString() : undefined,
+      limit: auditLimitInput.value ? Number(auditLimitInput.value) : undefined,
     });
     if (!response.ok) {
       auditStatus.textContent = `감사 로그 로드 실패 (${response.status})`;

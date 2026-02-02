@@ -48,6 +48,7 @@ type BlueprintMetadata = {
 
 const serverProfiles: ServerProfile[] = [];
 const blueprints: BlueprintMetadata[] = [];
+const metricsTickers = new Map<string, NodeJS.Timeout>();
 
 const readJsonBody = async <T>(req: http.IncomingMessage): Promise<T | null> => {
   const chunks: Buffer[] = [];
@@ -243,18 +244,27 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     const until = url.searchParams.get("until") ?? undefined;
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
-    sendJson(
-      res,
-      200,
-      listAuditEntries({
-        userId,
-        worldId,
-        commandType,
-        since,
-        until,
-        limit,
-      }),
-    );
+    if (since && Number.isNaN(Date.parse(since))) {
+      sendJson(res, 400, { message: "since 파라미터가 올바르지 않습니다." });
+      return;
+    }
+    if (until && Number.isNaN(Date.parse(until))) {
+      sendJson(res, 400, { message: "until 파라미터가 올바르지 않습니다." });
+      return;
+    }
+    if (since && until && Date.parse(since) > Date.parse(until)) {
+      sendJson(res, 400, { message: "since가 until보다 클 수 없습니다." });
+      return;
+    }
+    const entries = await listAuditEntries({
+      userId,
+      worldId,
+      commandType,
+      since,
+      until,
+      limit,
+    });
+    sendJson(res, 200, entries);
     return;
   }
 
@@ -279,6 +289,41 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     const body = await readJsonBody<{ mspt?: number; tps?: number }>(req);
     updateEditJobMetrics(job, { mspt: body?.mspt, tps: body?.tps });
     sendJson(res, 200, job);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/metrics/auto")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/metrics/auto", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    const body = await readJsonBody<{ intervalMs?: number; mspt?: number; tps?: number }>(req);
+    const intervalMs = Math.max(500, body?.intervalMs ?? 1000);
+    if (metricsTickers.has(jobId)) {
+      clearInterval(metricsTickers.get(jobId));
+    }
+    const timer = setInterval(() => {
+      updateEditJobMetrics(job, { mspt: body?.mspt, tps: body?.tps });
+    }, intervalMs);
+    metricsTickers.set(jobId, timer);
+    sendJson(res, 200, { jobId, intervalMs });
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/metrics/auto/stop")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/metrics/auto/stop", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    if (metricsTickers.has(jobId)) {
+      clearInterval(metricsTickers.get(jobId));
+      metricsTickers.delete(jobId);
+    }
+    sendJson(res, 200, { jobId, status: "stopped" });
     return;
   }
 

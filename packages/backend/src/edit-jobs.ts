@@ -13,6 +13,8 @@ export type CommandContext = {
   estimatedBlocks: number;
 };
 
+export type JobMetricsProvider = () => Promise<{ mspt?: number; tps?: number }>;
+
 export interface Command {
   type: CommandType;
   apply(context: CommandContext): Promise<void>;
@@ -131,7 +133,18 @@ const updateJob = (job: EditJob, status: EditJobStatus) => {
   job.updatedAt = new Date().toISOString();
 };
 
-export const runEditJob = async (job: EditJob) => {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const waitForResume = async (job: EditJob) => {
+  while (job.status === "paused") {
+    await sleep(500);
+  }
+};
+
+export const runEditJob = async (
+  job: EditJob,
+  options?: { metricsProvider?: JobMetricsProvider },
+) => {
   updateJob(job, "running");
   const context: CommandContext = {
     worldId: job.worldId,
@@ -140,15 +153,40 @@ export const runEditJob = async (job: EditJob) => {
   const startedAt = Date.now();
 
   try {
-    for (const payload of job.commands) {
-      const command = createCommand(payload);
-      await command.apply(context);
-      job.stats.doneBlocks += 10;
+    let index = 0;
+    while (index < job.commands.length) {
+      if (job.status === "canceled") {
+        return;
+      }
+      if (job.status === "paused") {
+        await waitForResume(job);
+      }
+
+      const batchSize = Math.max(1, job.stats.batchSize);
+      const batch = job.commands.slice(index, index + batchSize);
+      for (const payload of batch) {
+        const command = createCommand(payload);
+        await command.apply(context);
+        job.stats.doneBlocks += 10;
+        if (job.status === "canceled") {
+          return;
+        }
+      }
+      index += batch.length;
+
+      if (options?.metricsProvider) {
+        const metrics = await options.metricsProvider();
+        updateEditJobMetrics(job, metrics);
+      }
+
+      if (job.stats.delayMs > 0) {
+        await sleep(job.stats.delayMs);
+      }
     }
     updateJob(job, "completed");
     const durationMs = Date.now() - startedAt;
-    job.commands.forEach((payload) => {
-      recordAuditEntry({
+    for (const payload of job.commands) {
+      await recordAuditEntry({
         userId: job.createdBy,
         mcUuid: job.createdBy,
         worldId: job.worldId,
@@ -158,7 +196,7 @@ export const runEditJob = async (job: EditJob) => {
         durationMs,
         createdAt: new Date().toISOString(),
       });
-    });
+    }
   } catch (error) {
     updateJob(job, "failed");
     throw error;
@@ -214,4 +252,29 @@ export const updateEditJobMetrics = (
     job.stats.delayMs = Math.min(job.stats.delayMs + 10, job.policy.delayMsMax);
     return;
   }
+};
+
+export const startMetricsTicker = (
+  job: EditJob,
+  provider: JobMetricsProvider,
+  intervalMs = 1000,
+) => {
+  let active = true;
+  const run = async () => {
+    if (!active) {
+      return;
+    }
+    try {
+      const metrics = await provider();
+      updateEditJobMetrics(job, metrics);
+    } finally {
+      if (active) {
+        setTimeout(run, intervalMs);
+      }
+    }
+  };
+  run();
+  return () => {
+    active = false;
+  };
 };

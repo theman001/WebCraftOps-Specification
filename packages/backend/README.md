@@ -23,5 +23,12 @@ WEBCRAFTOPS_BACKEND_AUTO_START=true node ./packages/backend/src/index.ts
 ## 감사 로그 DB
 
 - 기본 저장소: SQLite (`data/webcraftops.sqlite`)
-- 경로 변경: `WEBCRAFTOPS_DB_PATH` 환경 변수 사용
+- 드라이버 선택: `WEBCRAFTOPS_DB_DRIVER=sqlite|postgres`
+- SQLite 경로: `WEBCRAFTOPS_DB_PATH`
+- Postgres 연결: `WEBCRAFTOPS_POSTGRES_URL` (pg 패키지 필요)
 - 필터: `userId`, `worldId`, `commandType`, `since`, `until`, `limit`
+
+## 메트릭 입력 경로
+
+- 수동 업데이트: `POST /bridge/edit/jobs/:jobId/metrics`
+- 자동 샘플링(테스트용): `POST /bridge/edit/jobs/:jobId/metrics/auto`, 중지 `POST /bridge/edit/jobs/:jobId/metrics/auto/stop`

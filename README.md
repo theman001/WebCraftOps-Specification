@@ -5,6 +5,7 @@ WebCraftOps는 웹 기반 Minecraft Ops 콘솔, 3D 월드 에디터, 블루프�
 ## 문서 안내
 
 - [WebCraftOps 사양 v0.3](docs/spec-v0.3.md)
+- [Phase 3 통합 검증 시나리오](docs/phase3-validation.md)
 
 ## 패키지 구성
 

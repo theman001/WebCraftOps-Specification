@@ -12,13 +12,21 @@ export const createPermissionService = (options: PermissionServiceOptions) => {
   return {
     async hasPermission(player: PlayerIdentity, node: string) {
       if (luckPermsAdapter) {
-        return luckPermsAdapter.hasPermission(player, node);
+        try {
+          return await luckPermsAdapter.hasPermission(player, node);
+        } catch {
+          return permissionAdapter.hasPermission(player, node);
+        }
       }
       return permissionAdapter.hasPermission(player, node);
     },
     async isOperator(player: PlayerIdentity) {
       if (luckPermsAdapter) {
-        return luckPermsAdapter.isOperator(player);
+        try {
+          return await luckPermsAdapter.isOperator(player);
+        } catch {
+          return permissionAdapter.isOperator(player);
+        }
       }
       return permissionAdapter.isOperator(player);
     },
