@@ -1,6 +1,15 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 import { URL } from "node:url";
+import {
+  cancelEditJob,
+  createEditJob,
+  getEditJob,
+  listEditJobs,
+  pauseEditJob,
+  resumeEditJob,
+  runEditJob,
+} from "./edit-jobs";
 
 type ServerProfile = {
   id: string;
@@ -24,7 +33,19 @@ type BridgeProxyResult = {
   error?: string;
 };
 
+type BlueprintMetadata = {
+  id: string;
+  name: string;
+  format: "schem" | "unknown";
+  size: [number, number, number];
+  blocks: number;
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+};
+
 const serverProfiles: ServerProfile[] = [];
+const blueprints: BlueprintMetadata[] = [];
 
 const readJsonBody = async <T>(req: http.IncomingMessage): Promise<T | null> => {
   const chunks: Buffer[] = [];
@@ -150,6 +171,112 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     }
     const result = await testBridgeConnection(body.bridgeUrl);
     sendJson(res, result.ok ? 200 : 502, result);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/blueprints") {
+    sendJson(res, 200, blueprints);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/blueprints") {
+    const body = await readJsonBody<Partial<BlueprintMetadata>>(req);
+    if (!body?.name) {
+      sendJson(res, 400, { message: "블루프린트 이름이 필요합니다." });
+      return;
+    }
+    const blueprint: BlueprintMetadata = {
+      id: randomUUID(),
+      name: body.name,
+      format: body.format ?? "schem",
+      size: body.size ?? [0, 0, 0],
+      blocks: body.blocks ?? 0,
+      tags: body.tags ?? [],
+      createdBy: body.createdBy ?? "unknown",
+      createdAt: new Date().toISOString(),
+    };
+    blueprints.push(blueprint);
+    sendJson(res, 201, blueprint);
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/blueprints/")) {
+    const id = pathname.replace("/blueprints/", "");
+    const blueprint = blueprints.find((item) => item.id === id);
+    if (!blueprint) {
+      sendJson(res, 404, { message: "블루프린트를 찾을 수 없습니다." });
+      return;
+    }
+    sendJson(res, 200, blueprint);
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/bridge/world/overworld/edit/jobs") {
+    const body = await readJsonBody<{ createdBy?: string; commands?: unknown[] }>(req);
+    if (!body?.commands || !Array.isArray(body.commands)) {
+      sendJson(res, 400, { message: "commands 배열이 필요합니다." });
+      return;
+    }
+    const job = createEditJob("overworld", body.createdBy ?? "unknown", body.commands as any);
+    try {
+      await runEditJob(job);
+    } catch {
+      sendJson(res, 500, { message: "작업 실행 중 오류가 발생했습니다.", job });
+      return;
+    }
+    sendJson(res, 201, job);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/edit/jobs") {
+    sendJson(res, 200, listEditJobs());
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/bridge/edit/jobs/")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    sendJson(res, 200, job);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/pause")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/pause", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    pauseEditJob(job);
+    sendJson(res, 200, job);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/resume")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/resume", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    resumeEditJob(job);
+    sendJson(res, 200, job);
+    return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/cancel")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/cancel", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    cancelEditJob(job);
+    sendJson(res, 200, job);
     return;
   }
 
