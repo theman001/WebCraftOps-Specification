@@ -23,6 +23,11 @@ type RegistryDump = {
   generatedAt: string;
 };
 
+type ChunkPayload = {
+  palette: string[];
+  indices: number[];
+};
+
 const registryDump: RegistryDump = {
   blocks: [
     {
@@ -60,6 +65,42 @@ const bridgeInfo: BridgeInfo = {
   mcVersion: "1.20.x",
 };
 
+const sampleChunk: ChunkPayload = {
+  palette: ["minecraft:stone", "minecraft:oak_log", "minecraft:glass_pane", "create:shaft"],
+  indices: [
+    0, 0, 1, 1, 2, 2, 3, 3,
+    0, 1, 2, 3, 0, 1, 2, 3,
+  ],
+};
+
+const encodeChunkPayload = (payload: ChunkPayload) => {
+  const encoder = new TextEncoder();
+  const paletteEntries = payload.palette.map((entry) => encoder.encode(entry));
+  const paletteSize = paletteEntries.reduce((sum, entry) => sum + 1 + entry.length, 0);
+  const indicesLength = payload.indices.length;
+  const buffer = new ArrayBuffer(1 + paletteSize + 2 + indicesLength);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  view.setUint8(offset, payload.palette.length);
+  offset += 1;
+
+  paletteEntries.forEach((entry) => {
+    view.setUint8(offset, entry.length);
+    offset += 1;
+    new Uint8Array(buffer, offset, entry.length).set(entry);
+    offset += entry.length;
+  });
+
+  view.setUint16(offset, indicesLength);
+  offset += 2;
+  payload.indices.forEach((value, index) => {
+    view.setUint8(offset + index, value);
+  });
+
+  return buffer;
+};
+
 const sendJson = (res: http.ServerResponse, status: number, payload: unknown) => {
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(status, {
@@ -89,6 +130,16 @@ const handleRequest = (req: http.IncomingMessage, res: http.ServerResponse) => {
 
   if (req.method === "GET" && pathname === "/bridge/registry/blocks") {
     sendJson(res, 200, registryDump);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/chunks") {
+    const buffer = encodeChunkPayload(sampleChunk);
+    res.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": buffer.byteLength,
+    });
+    res.end(Buffer.from(buffer));
     return;
   }
 

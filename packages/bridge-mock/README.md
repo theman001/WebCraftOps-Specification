@@ -6,6 +6,7 @@
 
 - `GET /bridge/info`
 - `GET /bridge/registry/blocks`
+- `GET /bridge/world/overworld/chunks`
 
 ## 로컬 실행 예시
 

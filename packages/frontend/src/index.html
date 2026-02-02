@@ -107,6 +107,16 @@
         color: #94a3b8;
         font-size: 0.8rem;
       }
+      .chunk-viewer {
+        margin-top: 2rem;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #1e293b;
+        background: #0b1220;
+      }
+      .chunk-viewer ul {
+        padding-left: 1.2rem;
+      }
     </style>
   </head>
   <body>
@@ -128,6 +138,13 @@
         <h2>레지스트리 블록 팔레트</h2>
         <div id="paletteStatus">Bridge 연결 후 팔레트를 불러옵니다.</div>
         <div class="palette-grid" id="paletteGrid"></div>
+      </section>
+      <section class="chunk-viewer">
+        <h2>청크 이진 디코드 (샘플)</h2>
+        <p>Bridge에서 청크 바이너리를 가져와 Web Worker로 디코드합니다.</p>
+        <button id="chunkButton">샘플 청크 디코드</button>
+        <div id="chunkStatus">대기 중입니다.</div>
+        <ul id="chunkResult"></ul>
       </section>
     </div>
     <script type="module" src="./app.js"></script>

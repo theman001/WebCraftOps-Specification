@@ -39,6 +39,7 @@ WebCraftOps는 웹 기반 Minecraft Ops 콘솔, 3D 월드 에디터, 블루프�
 │   │   ├── README.md
 │   │   └── src/
 │   │       ├── app.js
+│   │       ├── chunk-worker.js
 │   │       ├── index.html
 │   │       └── index.ts
 │   └── shared/

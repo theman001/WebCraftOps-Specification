@@ -175,6 +175,28 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/chunks") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    try {
+      const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+      const response = await fetch(`${normalizedUrl}/bridge/world/overworld/chunks`);
+      const buffer = await response.arrayBuffer();
+      res.writeHead(response.ok ? 200 : 502, {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": buffer.byteLength,
+      });
+      res.end(Buffer.from(buffer));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "알 수 없는 오류";
+      sendJson(res, 502, { ok: false, status: 0, error: message });
+    }
+    return;
+  }
+
   sendNotFound(res);
 };
 
