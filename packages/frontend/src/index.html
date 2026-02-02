@@ -101,6 +101,12 @@
         color: #cbd5f5;
         font-size: 0.75rem;
       }
+      small {
+        display: block;
+        margin-top: 0.5rem;
+        color: #94a3b8;
+        font-size: 0.8rem;
+      }
     </style>
   </head>
   <body>
@@ -109,6 +115,9 @@
       <p>Bridge URL을 입력하고 연결 테스트를 진행하세요.</p>
       <label for="bridgeUrl">Bridge URL</label>
       <input id="bridgeUrl" type="text" placeholder="http://localhost:4100" />
+      <label for="backendUrl">Backend URL (선택)</label>
+      <input id="backendUrl" type="text" placeholder="http://localhost:4000" />
+      <small>백엔드가 브릿지 프록시를 제공하면 CORS 없이 레지스트리를 가져옵니다.</small>
       <button id="testButton">연결 테스트</button>
       <div class="result" id="result">대기 중입니다.</div>
       <div class="recent">

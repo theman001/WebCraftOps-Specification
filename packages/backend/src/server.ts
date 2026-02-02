@@ -17,6 +17,13 @@ type BridgeTestResult = {
   error?: string;
 };
 
+type BridgeProxyResult = {
+  ok: boolean;
+  status: number;
+  payload?: unknown;
+  error?: string;
+};
+
 const serverProfiles: ServerProfile[] = [];
 
 const readJsonBody = async <T>(req: http.IncomingMessage): Promise<T | null> => {
@@ -54,6 +61,27 @@ const testBridgeConnection = async (bridgeUrl: string): Promise<BridgeTestResult
       ok: response.ok,
       status: response.status,
       info,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    return {
+      ok: false,
+      status: 0,
+      error: message,
+    };
+  }
+};
+
+const proxyBridgeRequest = async (bridgeUrl: string, path: string): Promise<BridgeProxyResult> => {
+  try {
+    const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+    const response = await fetch(`${normalizedUrl}${path}`);
+    const payload = await response.json().catch(() => undefined);
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      payload,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
@@ -121,6 +149,28 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       return;
     }
     const result = await testBridgeConnection(body.bridgeUrl);
+    sendJson(res, result.ok ? 200 : 502, result);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/info") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const result = await proxyBridgeRequest(bridgeUrl, "/bridge/info");
+    sendJson(res, result.ok ? 200 : 502, result);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/registry/blocks") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const result = await proxyBridgeRequest(bridgeUrl, "/bridge/registry/blocks");
     sendJson(res, result.ok ? 200 : 502, result);
     return;
   }

@@ -1,4 +1,5 @@
 const bridgeInput = document.getElementById("bridgeUrl");
+const backendInput = document.getElementById("backendUrl");
 const testButton = document.getElementById("testButton");
 const result = document.getElementById("result");
 const recentList = document.getElementById("recentList");
@@ -31,6 +32,40 @@ const renderRecents = () => {
 
 const updateResult = (message) => {
   result.textContent = message;
+};
+
+const getBackendUrl = () => {
+  const backendUrl = backendInput.value.trim();
+  if (!backendUrl) {
+    return null;
+  }
+  return backendUrl.endsWith("/") ? backendUrl.slice(0, -1) : backendUrl;
+};
+
+const fetchBridgeInfo = async (bridgeUrl, backendUrl) => {
+  if (backendUrl) {
+    const response = await fetch(
+      `${backendUrl}/bridge/info?bridgeUrl=${encodeURIComponent(bridgeUrl)}`,
+    );
+    const payload = await response.json();
+    return { response, payload: payload.payload ?? payload };
+  }
+  const response = await fetch(`${bridgeUrl}/bridge/info`);
+  const payload = await response.json();
+  return { response, payload };
+};
+
+const fetchRegistryBlocks = async (bridgeUrl, backendUrl) => {
+  if (backendUrl) {
+    const response = await fetch(
+      `${backendUrl}/bridge/registry/blocks?bridgeUrl=${encodeURIComponent(bridgeUrl)}`,
+    );
+    const payload = await response.json();
+    return { response, payload: payload.payload ?? payload };
+  }
+  const response = await fetch(`${bridgeUrl}/bridge/registry/blocks`);
+  const payload = await response.json();
+  return { response, payload };
 };
 
 const renderPalette = (blocks) => {
@@ -70,10 +105,10 @@ const renderPalette = (blocks) => {
 const loadPalette = async (bridgeUrl) => {
   paletteStatus.textContent = "팔레트를 불러오는 중...";
   paletteGrid.innerHTML = "";
+  const backendUrl = getBackendUrl();
 
   try {
-    const response = await fetch(`${bridgeUrl}/bridge/registry/blocks`);
-    const payload = await response.json();
+    const { response, payload } = await fetchRegistryBlocks(bridgeUrl, backendUrl);
     if (!response.ok) {
       paletteStatus.textContent = `팔레트 로드 실패 (${response.status})`;
       return;
@@ -98,8 +133,8 @@ const testConnection = async () => {
 
   try {
     const normalized = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-    const response = await fetch(`${normalized}/bridge/info`);
-    const payload = await response.json();
+    const backendUrl = getBackendUrl();
+    const { response, payload } = await fetchBridgeInfo(normalized, backendUrl);
 
     if (response.ok) {
       updateResult(`연결 성공!\n${JSON.stringify(payload, null, 2)}`);
