@@ -13,7 +13,7 @@
         padding: 2rem;
       }
       .container {
-        max-width: 720px;
+        max-width: 880px;
         margin: 0 auto;
         background: #111827;
         padding: 2rem;
@@ -65,6 +65,36 @@
       .recent ul {
         padding-left: 1.2rem;
       }
+      .palette {
+        margin-top: 2rem;
+        background: #0b1220;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .palette h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+      }
+      .palette-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.75rem;
+      }
+      .palette-card {
+        background: #111827;
+        border: 1px solid #1e293b;
+        padding: 0.75rem;
+        border-radius: 8px;
+      }
+      .palette-card strong {
+        display: block;
+        font-size: 0.95rem;
+      }
+      .palette-card span {
+        font-size: 0.8rem;
+        color: #94a3b8;
+      }
     </style>
   </head>
   <body>
@@ -72,13 +102,18 @@
       <h1>Bridge 서버 주소 입력</h1>
       <p>Bridge URL을 입력하고 연결 테스트를 진행하세요.</p>
       <label for="bridgeUrl">Bridge URL</label>
-      <input id="bridgeUrl" type="text" placeholder="http://localhost:8080" />
+      <input id="bridgeUrl" type="text" placeholder="http://localhost:4100" />
       <button id="testButton">연결 테스트</button>
       <div class="result" id="result">대기 중입니다.</div>
       <div class="recent">
         <strong>최근 연결</strong>
         <ul id="recentList"></ul>
       </div>
+      <section class="palette">
+        <h2>레지스트리 블록 팔레트</h2>
+        <div id="paletteStatus">Bridge 연결 후 팔레트를 불러옵니다.</div>
+        <div class="palette-grid" id="paletteGrid"></div>
+      </section>
     </div>
     <script type="module" src="./app.js"></script>
   </body>
