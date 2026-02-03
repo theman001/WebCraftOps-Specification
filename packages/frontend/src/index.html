@@ -117,6 +117,30 @@
       .chunk-viewer ul {
         padding-left: 1.2rem;
       }
+      .viewer {
+        margin-top: 2rem;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #1e293b;
+        background: #0b1220;
+      }
+      .viewer h2 {
+        margin-top: 0;
+        font-size: 1.2rem;
+      }
+      .viewer-toolbar {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+      }
+      .viewer-canvas {
+        width: 100%;
+        height: 360px;
+        border-radius: 8px;
+        border: 1px solid #1e293b;
+        background: #0b1220;
+      }
       .edit-jobs {
         margin-top: 2rem;
         padding: 1rem;
@@ -289,6 +313,18 @@
         <div id="chunkStatus">대기 중입니다.</div>
         <ul id="chunkResult"></ul>
       </section>
+      <section class="viewer">
+        <h2>3D 월드 뷰어 (초기)</h2>
+        <p>청크 디코드 결과를 Three.js로 렌더링하고 편집 도구를 연결합니다.</p>
+        <div class="viewer-toolbar">
+          <button id="toolBrush">브러시</button>
+          <button id="toolSelect">선택</button>
+          <button id="toolFill">채우기</button>
+          <button id="viewerClear">렌더 초기화</button>
+        </div>
+        <div id="viewerStatus">청크 디코드 후 렌더링됩니다.</div>
+        <canvas id="viewerCanvas" class="viewer-canvas"></canvas>
+      </section>
       <section class="edit-jobs">
         <h2>Edit Job 시스템 (Command 패턴)</h2>
         <p>Job 생성/조회 및 일시정지/재개/취소를 UI에서 확인합니다.</p>
@@ -385,6 +421,7 @@
         </div>
         <div class="audit-actions">
           <button id="refreshAuditButton">감사 로그 새로고침</button>
+          <button id="loadMoreAuditButton" disabled>추가 불러오기</button>
         </div>
         <div id="auditStatus">조회 대기 중입니다.</div>
         <ul class="audit-list" id="auditList"></ul>

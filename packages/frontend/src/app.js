@@ -8,6 +8,12 @@ const paletteGrid = document.getElementById("paletteGrid");
 const chunkButton = document.getElementById("chunkButton");
 const chunkStatus = document.getElementById("chunkStatus");
 const chunkResult = document.getElementById("chunkResult");
+const toolBrushButton = document.getElementById("toolBrush");
+const toolSelectButton = document.getElementById("toolSelect");
+const toolFillButton = document.getElementById("toolFill");
+const viewerClearButton = document.getElementById("viewerClear");
+const viewerStatus = document.getElementById("viewerStatus");
+const viewerCanvas = document.getElementById("viewerCanvas");
 const createdByInput = document.getElementById("createdBy");
 const commandTypeInput = document.getElementById("commandType");
 const commandParamsInput = document.getElementById("commandParams");
@@ -33,14 +39,153 @@ const auditSinceInput = document.getElementById("auditSince");
 const auditUntilInput = document.getElementById("auditUntil");
 const auditLimitInput = document.getElementById("auditLimit");
 const refreshAuditButton = document.getElementById("refreshAuditButton");
+const loadMoreAuditButton = document.getElementById("loadMoreAuditButton");
 const auditStatus = document.getElementById("auditStatus");
 const auditList = document.getElementById("auditList");
+const loadMoreAuditLabel = loadMoreAuditButton.textContent;
 
 const RECENT_KEY = "webcraftops.recentServers";
 const HISTORY_MAX = 10;
 
 const historyStack = [];
 const redoStack = [];
+let toolMode = "brush";
+let rendererState = null;
+let auditCursor = null;
+
+const ensureRenderer = async () => {
+  if (rendererState) {
+    return rendererState;
+  }
+  const THREE = await import("./vendor/three.module.js");
+  const renderer = new THREE.WebGLRenderer({ canvas: viewerCanvas, antialias: true });
+  renderer.setSize(viewerCanvas.clientWidth, viewerCanvas.clientHeight, false);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#0b1220");
+
+  const camera = new THREE.PerspectiveCamera(
+    45,
+    viewerCanvas.clientWidth / viewerCanvas.clientHeight,
+    0.1,
+    100,
+  );
+  camera.position.set(6, 6, 8);
+  camera.lookAt(0, 0, 0);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  const light = new THREE.DirectionalLight(0xffffff, 0.8);
+  light.position.set(5, 10, 7);
+  scene.add(ambient);
+  scene.add(light);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const selectable = [];
+
+  const render = () => {
+    renderer.render(scene, camera);
+  };
+  render();
+
+  const handleResize = () => {
+    const width = viewerCanvas.clientWidth;
+    const height = viewerCanvas.clientHeight;
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    render();
+  };
+  window.addEventListener("resize", handleResize);
+
+  viewerCanvas.addEventListener("click", async (event) => {
+    const rect = viewerCanvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const intersects = raycaster.intersectObjects(selectable);
+    if (intersects.length === 0) {
+      return;
+    }
+    const hit = intersects[0].object;
+    if (toolMode === "select") {
+      hit.material.emissive = new THREE.Color("#facc15");
+    } else if (toolMode === "brush") {
+      hit.material.color = new THREE.Color("#38bdf8");
+    } else if (toolMode === "fill") {
+      selectable.forEach((mesh) => {
+        mesh.material.color = new THREE.Color("#34d399");
+      });
+    }
+    render();
+
+    const backendUrl = getBackendUrl();
+    if (backendUrl) {
+      const blockId = hit.userData?.blockId ?? "unknown";
+      const bridgeUrl = bridgeInput.value.trim() || undefined;
+      const { payload } = await createEditJobRequest(backendUrl, "ui", [
+        {
+          type: "setBlock",
+          params: { pos: hit.position.toArray(), tool: toolMode, blockId },
+        },
+      ], bridgeUrl);
+      if (payload?.jobId) {
+        recordAction(payload.jobId, "create", `3D 편집 작업 생성 (${toolMode})`);
+      }
+    }
+  });
+
+  rendererState = {
+    THREE,
+    renderer,
+    scene,
+    camera,
+    selectable,
+    render,
+  };
+  return rendererState;
+};
+
+const renderVoxelPreview = async (palette, counts, mesh) => {
+  const { THREE, scene, selectable, render } = await ensureRenderer();
+  selectable.splice(0, selectable.length);
+  while (scene.children.length > 2) {
+    scene.remove(scene.children[2]);
+  }
+
+  if (mesh?.positions) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
+    geometry.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(mesh.colors, 3));
+    geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
+
+    const material = new THREE.MeshStandardMaterial({ vertexColors: true });
+    const chunkMesh = new THREE.Mesh(geometry, material);
+    chunkMesh.position.set(-2, 0, -2);
+    scene.add(chunkMesh);
+  }
+
+  if (Array.isArray(mesh?.voxels)) {
+    mesh.voxels.forEach((voxel) => {
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+      proxy.position.set(voxel.position[0], voxel.position[1], voxel.position[2]);
+      proxy.userData = { blockId: voxel.blockId };
+      selectable.push(proxy);
+    });
+  } else {
+    const max = Math.min(48, counts.length);
+    for (let i = 0; i < max; i += 1) {
+      const proxy = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+      proxy.position.set((i % 8) - 3.5, 0, Math.floor(i / 8) - 2.5);
+      proxy.userData = { blockId: palette[i] };
+      selectable.push(proxy);
+    }
+  }
+
+  viewerStatus.textContent = `렌더링 완료: 청크 메쉬 생성됨 (LOD ${mesh?.lodStep ?? 1})`;
+  render();
+};
 
 const loadRecents = () => {
   const stored = localStorage.getItem(RECENT_KEY);
@@ -122,8 +267,9 @@ const fetchEditJobs = async (backendUrl) => {
   return { response, payload };
 };
 
-const createEditJobRequest = async (backendUrl, createdBy, commands) => {
-  const response = await fetch(`${backendUrl}/bridge/world/overworld/edit/jobs`, {
+const createEditJobRequest = async (backendUrl, createdBy, commands, bridgeUrl) => {
+  const query = bridgeUrl ? `?bridgeUrl=${encodeURIComponent(bridgeUrl)}` : "";
+  const response = await fetch(`${backendUrl}/bridge/world/overworld/edit/jobs${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ createdBy, commands }),
@@ -132,8 +278,9 @@ const createEditJobRequest = async (backendUrl, createdBy, commands) => {
   return { response, payload };
 };
 
-const updateEditJobStatus = async (backendUrl, jobId, action) => {
-  const response = await fetch(`${backendUrl}/bridge/edit/jobs/${jobId}/${action}`, {
+const updateEditJobStatus = async (backendUrl, jobId, action, bridgeUrl) => {
+  const query = bridgeUrl ? `?bridgeUrl=${encodeURIComponent(bridgeUrl)}` : "";
+  const response = await fetch(`${backendUrl}/bridge/edit/jobs/${jobId}/${action}${query}`, {
     method: "POST",
   });
   const payload = await response.json();
@@ -171,9 +318,13 @@ const downloadBlueprint = (blueprint) => {
 };
 
 const createPasteJob = async (backendUrl, blueprintId) => {
-  const { response, payload } = await createEditJobRequest(backendUrl, "ui", [
-    { type: "pasteBlueprint", params: { blueprintId } },
-  ]);
+  const bridgeUrl = bridgeInput.value.trim() || undefined;
+  const { response, payload } = await createEditJobRequest(
+    backendUrl,
+    "ui",
+    [{ type: "pasteBlueprint", params: { blueprintId } }],
+    bridgeUrl,
+  );
   return { response, payload };
 };
 
@@ -196,6 +347,9 @@ const fetchAuditEntries = async (backendUrl, filters) => {
   }
   if (typeof filters.limit === "number" && !Number.isNaN(filters.limit)) {
     params.set("limit", String(filters.limit));
+  }
+  if (filters.cursor) {
+    params.set("cursor", filters.cursor);
   }
   const query = params.toString();
   const response = await fetch(`${backendUrl}/audit${query ? `?${query}` : ""}`);
@@ -273,6 +427,7 @@ const runUndo = async () => {
     historyStatus.textContent = "Backend URL을 입력해 주세요.";
     return;
   }
+  const bridgeUrl = bridgeInput.value.trim() || undefined;
   const entry = historyStack.shift();
   if (!entry) {
     renderHistory();
@@ -285,7 +440,11 @@ const runUndo = async () => {
   }
   historyStatus.textContent = "Undo 실행 중...";
   try {
-    await updateEditJobStatus(backendUrl, entry.jobId, entry.inverseAction);
+    if (entry.action === "create") {
+      await updateEditJobStatus(backendUrl, entry.jobId, "revert", bridgeUrl);
+    } else {
+      await updateEditJobStatus(backendUrl, entry.jobId, entry.inverseAction, bridgeUrl);
+    }
     redoStack.unshift(entry);
     historyStatus.textContent = "Undo 완료";
     renderHistory();
@@ -301,6 +460,7 @@ const runRedo = async () => {
     historyStatus.textContent = "Backend URL을 입력해 주세요.";
     return;
   }
+  const bridgeUrl = bridgeInput.value.trim() || undefined;
   const entry = redoStack.shift();
   if (!entry) {
     renderHistory();
@@ -313,7 +473,7 @@ const runRedo = async () => {
   }
   historyStatus.textContent = "Redo 실행 중...";
   try {
-    await updateEditJobStatus(backendUrl, entry.jobId, entry.redoAction);
+    await updateEditJobStatus(backendUrl, entry.jobId, entry.redoAction, bridgeUrl);
     historyStack.unshift(entry);
     historyStatus.textContent = "Redo 완료";
     renderHistory();
@@ -388,7 +548,8 @@ const renderEditJobs = (jobs, backendUrl) => {
     pauseButton.textContent = "일시정지";
     pauseButton.disabled = job.status !== "running";
     pauseButton.addEventListener("click", async () => {
-      await updateEditJobStatus(backendUrl, job.jobId, "pause");
+      const bridgeUrl = bridgeInput.value.trim() || undefined;
+      await updateEditJobStatus(backendUrl, job.jobId, "pause", bridgeUrl);
       recordAction(job.jobId, "pause", `작업 일시정지: ${job.jobId}`);
       await loadEditJobs();
     });
@@ -397,7 +558,8 @@ const renderEditJobs = (jobs, backendUrl) => {
     resumeButton.textContent = "재개";
     resumeButton.disabled = job.status !== "paused";
     resumeButton.addEventListener("click", async () => {
-      await updateEditJobStatus(backendUrl, job.jobId, "resume");
+      const bridgeUrl = bridgeInput.value.trim() || undefined;
+      await updateEditJobStatus(backendUrl, job.jobId, "resume", bridgeUrl);
       recordAction(job.jobId, "resume", `작업 재개: ${job.jobId}`);
       await loadEditJobs();
     });
@@ -406,7 +568,8 @@ const renderEditJobs = (jobs, backendUrl) => {
     cancelButton.textContent = "취소";
     cancelButton.disabled = ["completed", "canceled"].includes(job.status);
     cancelButton.addEventListener("click", async () => {
-      await updateEditJobStatus(backendUrl, job.jobId, "cancel");
+      const bridgeUrl = bridgeInput.value.trim() || undefined;
+      await updateEditJobStatus(backendUrl, job.jobId, "cancel", bridgeUrl);
       recordAction(job.jobId, "cancel", `작업 취소: ${job.jobId}`);
       await loadEditJobs();
     });
@@ -485,10 +648,14 @@ const renderBlueprints = (blueprints, backendUrl) => {
   });
 };
 
-const renderAuditEntries = (entries) => {
-  auditList.innerHTML = "";
+const renderAuditEntries = (entries, mode = "replace") => {
+  if (mode === "replace") {
+    auditList.innerHTML = "";
+  }
   if (entries.length === 0) {
-    auditList.innerHTML = "<small>감사 로그가 없습니다.</small>";
+    if (mode === "replace") {
+      auditList.innerHTML = "<small>감사 로그가 없습니다.</small>";
+    }
     return;
   }
   entries.forEach((entry) => {
@@ -509,12 +676,17 @@ const renderAuditEntries = (entries) => {
   });
 };
 
-const loadAuditEntries = async () => {
+const loadAuditEntries = async (mode = "replace") => {
   const backendUrl = getBackendUrl();
   if (!backendUrl) {
     auditStatus.textContent = "Backend URL을 입력해 주세요.";
     return;
   }
+  if (mode === "replace") {
+    auditCursor = null;
+  }
+  loadMoreAuditButton.disabled = true;
+  loadMoreAuditButton.textContent = "불러오는 중...";
   auditStatus.textContent = "감사 로그를 불러오는 중...";
   try {
     const { response, payload } = await fetchAuditEntries(backendUrl, {
@@ -524,16 +696,22 @@ const loadAuditEntries = async () => {
       since: auditSinceInput.value ? new Date(auditSinceInput.value).toISOString() : undefined,
       until: auditUntilInput.value ? new Date(auditUntilInput.value).toISOString() : undefined,
       limit: auditLimitInput.value ? Number(auditLimitInput.value) : undefined,
+      cursor: mode === "append" ? auditCursor : undefined,
     });
     if (!response.ok) {
       auditStatus.textContent = `감사 로그 로드 실패 (${response.status})`;
       return;
     }
-    auditStatus.textContent = `총 ${payload.length}건 감사 로그`;
-    renderAuditEntries(payload);
+    const items = Array.isArray(payload) ? payload : payload.items ?? [];
+    auditCursor = Array.isArray(payload) ? null : payload.nextCursor ?? null;
+    auditStatus.textContent = `총 ${items.length}건 감사 로그`;
+    renderAuditEntries(items, mode);
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     auditStatus.textContent = `감사 로그 로드 실패: ${message}`;
+  } finally {
+    loadMoreAuditButton.textContent = loadMoreAuditLabel;
+    loadMoreAuditButton.disabled = !auditCursor;
   }
 };
 
@@ -641,9 +819,13 @@ const createEditJob = async () => {
   }
   editJobStatus.textContent = "작업 생성 중...";
   try {
-    const { response, payload } = await createEditJobRequest(backendUrl, createdBy, [
-      { type, params },
-    ]);
+    const bridgeUrl = bridgeInput.value.trim() || undefined;
+    const { response, payload } = await createEditJobRequest(
+      backendUrl,
+      createdBy,
+      [{ type, params }],
+      bridgeUrl,
+    );
     if (!response.ok) {
       editJobStatus.textContent = `작업 생성 실패 (${response.status})`;
       return;
@@ -689,9 +871,10 @@ const decodeChunk = async (bridgeUrl) => {
     }
 
     const worker = new Worker("./chunk-worker.js");
-    worker.postMessage({ buffer }, [buffer]);
+    const lodStep = buffer.byteLength > 4096 ? 2 : 1;
+    worker.postMessage({ buffer, lodStep }, [buffer]);
     worker.addEventListener("message", (event) => {
-      const { palette, counts } = event.data;
+      const { palette, counts, mesh } = event.data;
       chunkStatus.textContent = "디코드 완료";
       chunkResult.innerHTML = "";
       palette.forEach((name, index) => {
@@ -699,6 +882,7 @@ const decodeChunk = async (bridgeUrl) => {
         li.textContent = `${name}: ${counts[index]} blocks`;
         chunkResult.appendChild(li);
       });
+      renderVoxelPreview(palette, counts, mesh);
       worker.terminate();
     });
   } catch (error) {
@@ -752,6 +936,30 @@ const testConnection = async () => {
 };
 
 testButton.addEventListener("click", testConnection);
+toolBrushButton.addEventListener("click", () => {
+  toolMode = "brush";
+  viewerStatus.textContent = "브러시 모드 활성화";
+});
+toolSelectButton.addEventListener("click", () => {
+  toolMode = "select";
+  viewerStatus.textContent = "선택 모드 활성화";
+});
+toolFillButton.addEventListener("click", () => {
+  toolMode = "fill";
+  viewerStatus.textContent = "채우기 모드 활성화";
+});
+viewerClearButton.addEventListener("click", async () => {
+  if (!rendererState) {
+    return;
+  }
+  const { scene, selectable, render } = rendererState;
+  selectable.splice(0, selectable.length);
+  while (scene.children.length > 2) {
+    scene.remove(scene.children[2]);
+  }
+  viewerStatus.textContent = "렌더링 초기화 완료";
+  render();
+});
 refreshJobsButton.addEventListener("click", loadEditJobs);
 createJobButton.addEventListener("click", createEditJob);
 undoButton.addEventListener("click", runUndo);
@@ -759,5 +967,7 @@ redoButton.addEventListener("click", runRedo);
 refreshBlueprintsButton.addEventListener("click", loadBlueprints);
 uploadBlueprintButton.addEventListener("click", uploadBlueprint);
 refreshAuditButton.addEventListener("click", loadAuditEntries);
+loadMoreAuditButton.addEventListener("click", () => loadAuditEntries("append"));
 renderRecents();
 renderHistory();
+loadMoreAuditButton.disabled = true;

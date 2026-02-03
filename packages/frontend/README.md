@@ -10,4 +10,9 @@ WebCraftOps 웹 프런트엔드의 1단계 뼈대를 포함합니다. 서버 선
 - Edit Job 생성/조회/상태 변경 UI
 - Edit Job Undo/Redo 기록 추적 UI
 - Blueprint/Schematic 업로드 및 붙여넣기 작업 생성 UI
-- 감사 로그 대시보드 UI (필터/조회 개수 포함)
+- 감사 로그 대시보드 UI (필터/조회 개수/페이지네이션 포함)
+- 3D 월드 뷰어(Three.js)와 편집 도구 초기 연결
+- 청크 메쉬 변환(Web Worker) 및 메쉬 버퍼 렌더링 흐름
+- 3D 편집 작업을 브릿지 Edit Job 실행 경로로 전달
+- Undo/Redo 시 Edit Job 되돌리기 호출 (revert)
+- Three.js CDN 의존 제거를 위한 로컬 모듈 사용

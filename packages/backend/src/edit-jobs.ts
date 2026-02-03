@@ -143,8 +143,9 @@ const waitForResume = async (job: EditJob) => {
 
 export const runEditJob = async (
   job: EditJob,
-  options?: { metricsProvider?: JobMetricsProvider },
+  options?: { metricsProvider?: JobMetricsProvider; mode?: "apply" | "revert" },
 ) => {
+  const mode = options?.mode ?? "apply";
   updateJob(job, "running");
   const context: CommandContext = {
     worldId: job.worldId,
@@ -166,7 +167,11 @@ export const runEditJob = async (
       const batch = job.commands.slice(index, index + batchSize);
       for (const payload of batch) {
         const command = createCommand(payload);
-        await command.apply(context);
+        if (mode === "revert") {
+          await command.revert(context);
+        } else {
+          await command.apply(context);
+        }
         job.stats.doneBlocks += 10;
         if (job.status === "canceled") {
           return;
@@ -190,7 +195,7 @@ export const runEditJob = async (
         userId: job.createdBy,
         mcUuid: job.createdBy,
         worldId: job.worldId,
-        commandType: payload.type,
+        commandType: mode === "revert" ? `${payload.type}:revert` : payload.type,
         params: payload.params,
         estimatedBlocks: job.stats.estimatedBlocks,
         durationMs,

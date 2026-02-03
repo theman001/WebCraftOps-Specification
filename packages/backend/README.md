@@ -26,7 +26,7 @@ WEBCRAFTOPS_BACKEND_AUTO_START=true node ./packages/backend/src/index.ts
 - 드라이버 선택: `WEBCRAFTOPS_DB_DRIVER=sqlite|postgres`
 - SQLite 경로: `WEBCRAFTOPS_DB_PATH`
 - Postgres 연결: `WEBCRAFTOPS_POSTGRES_URL` (pg 패키지 필요)
-- 필터: `userId`, `worldId`, `commandType`, `since`, `until`, `limit`
+- 필터: `userId`, `worldId`, `commandType`, `since`, `until`, `limit`, `cursor`
 
 ## 메트릭 입력 경로
 

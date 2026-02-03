@@ -10,3 +10,4 @@ Minecraft Bridge의 공통 코어 로직과 어댑터 인터페이스를 정의�
 - LuckPerms 권한 어댑터 확장 지원
 - LuckPerms 기본 구현 예시 및 권한 서비스 제공
 - LuckPerms HTTP 어댑터 제공 (API 연동용)
+- Fabric 브릿지 코어 기본 구현 제공

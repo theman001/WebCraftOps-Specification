@@ -155,10 +155,12 @@ export const listAuditEntries = async (filters?: {
   since?: string;
   until?: string;
   limit?: number;
+  cursor?: string;
 }) => {
   const limit = Math.min(filters?.limit ?? 100, 500);
   const where: string[] = [];
   const params: Record<string, string | number> = {};
+  const cursor = parseCursor(filters?.cursor);
 
   if (filters?.userId) {
     where.push("user_id = $userId");
@@ -180,6 +182,13 @@ export const listAuditEntries = async (filters?: {
     where.push("created_at <= $until");
     params.until = filters.until;
   }
+  if (cursor) {
+    where.push(
+      "(created_at < $cursorCreatedAt OR (created_at = $cursorCreatedAt AND id < $cursorId))",
+    );
+    params.cursorCreatedAt = cursor.createdAt;
+    params.cursorId = cursor.id;
+  }
 
   const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
@@ -198,7 +207,7 @@ const listAuditEntriesSqlite = (
   const stmt = database.prepare(`
       SELECT * FROM audit_logs
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT ${limit};
     `);
   const rows = stmt.all(params) as Array<{
@@ -212,7 +221,7 @@ const listAuditEntriesSqlite = (
     duration_ms: number;
     created_at: string;
   }>;
-  return rows.map((row) => ({
+  const items = rows.map((row) => ({
     id: row.id,
     userId: row.user_id,
     mcUuid: row.mc_uuid,
@@ -223,6 +232,10 @@ const listAuditEntriesSqlite = (
     durationMs: row.duration_ms,
     createdAt: row.created_at,
   }));
+  return {
+    items,
+    nextCursor: items.length === limit ? buildCursor(items[items.length - 1]) : null,
+  };
 };
 
 const listAuditEntriesPostgres = async (
@@ -235,14 +248,14 @@ const listAuditEntriesPostgres = async (
   let query = `
     SELECT * FROM audit_logs
     ${whereClause}
-    ORDER BY created_at DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT ${limit};
   `;
   Object.keys(params).forEach((key, index) => {
     query = query.replace(`$${key}`, `$${index + 1}`);
   });
   const result = await client.query(query, values);
-  return result.rows.map((row: any) => ({
+  const items = result.rows.map((row: any) => ({
     id: row.id,
     userId: row.user_id,
     mcUuid: row.mc_uuid,
@@ -253,4 +266,29 @@ const listAuditEntriesPostgres = async (
     durationMs: row.duration_ms,
     createdAt: row.created_at,
   }));
+  return {
+    items,
+    nextCursor: items.length === limit ? buildCursor(items[items.length - 1]) : null,
+  };
+};
+
+const parseCursor = (cursor?: string) => {
+  if (!cursor) {
+    return null;
+  }
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf-8");
+    const parsed = JSON.parse(decoded) as { createdAt?: string; id?: string };
+    if (!parsed.createdAt || !parsed.id) {
+      return null;
+    }
+    return { createdAt: parsed.createdAt, id: parsed.id };
+  } catch {
+    return null;
+  }
+};
+
+const buildCursor = (entry: { createdAt: string; id: string }) => {
+  const payload = JSON.stringify({ createdAt: entry.createdAt, id: entry.id });
+  return Buffer.from(payload, "utf-8").toString("base64url");
 };

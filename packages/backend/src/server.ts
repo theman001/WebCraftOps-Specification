@@ -220,6 +220,24 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 400, { message: "commands 배열이 필요합니다." });
       return;
     }
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (bridgeUrl) {
+      try {
+        const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+        const response = await fetch(`${normalizedUrl}/bridge/world/overworld/edit/jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => undefined);
+        sendJson(res, response.ok ? 201 : 502, payload ?? { message: "브릿지 응답 오류" });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "알 수 없는 오류";
+        sendJson(res, 502, { message });
+        return;
+      }
+    }
     const job = createEditJob("overworld", body.createdBy ?? "unknown", body.commands as any);
     try {
       await runEditJob(job);
@@ -244,6 +262,7 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     const until = url.searchParams.get("until") ?? undefined;
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number(limitRaw) : undefined;
+    const cursor = url.searchParams.get("cursor") ?? undefined;
     if (since && Number.isNaN(Date.parse(since))) {
       sendJson(res, 400, { message: "since 파라미터가 올바르지 않습니다." });
       return;
@@ -263,6 +282,7 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       since,
       until,
       limit,
+      cursor,
     });
     sendJson(res, 200, entries);
     return;
@@ -349,6 +369,39 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     resumeEditJob(job);
     sendJson(res, 200, job);
     return;
+  }
+
+  if (req.method === "POST" && pathname.endsWith("/revert")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/revert", "");
+    const job = getEditJob(jobId);
+    if (!job) {
+      sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
+      return;
+    }
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (bridgeUrl) {
+      try {
+        const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+        const response = await fetch(`${normalizedUrl}/bridge/edit/jobs/${jobId}/revert`, {
+          method: "POST",
+        });
+        const payload = await response.json().catch(() => undefined);
+        sendJson(res, response.ok ? 200 : 502, payload ?? { message: "브릿지 응답 오류" });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "알 수 없는 오류";
+        sendJson(res, 502, { message });
+        return;
+      }
+    }
+    try {
+      await runEditJob(job, { mode: "revert" });
+      sendJson(res, 200, job);
+      return;
+    } catch {
+      sendJson(res, 500, { message: "되돌리기 실행 중 오류가 발생했습니다.", job });
+      return;
+    }
   }
 
   if (req.method === "POST" && pathname.endsWith("/cancel")) {

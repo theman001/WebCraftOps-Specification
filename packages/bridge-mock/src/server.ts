@@ -28,6 +28,11 @@ type ChunkPayload = {
   indices: number[];
 };
 
+type EditJobRequest = {
+  createdBy?: string;
+  commands?: Array<{ type: string; params: Record<string, unknown> }>;
+};
+
 const registryDump: RegistryDump = {
   blocks: [
     {
@@ -140,6 +145,30 @@ const handleRequest = (req: http.IncomingMessage, res: http.ServerResponse) => {
       "Content-Length": buffer.byteLength,
     });
     res.end(Buffer.from(buffer));
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/bridge/world/overworld/edit/jobs") {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on("end", () => {
+      const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf-8")) : {};
+      const payload = body as EditJobRequest;
+      const jobId = `mock-${Date.now()}`;
+      sendJson(res, 201, {
+        jobId,
+        worldId: "overworld",
+        createdBy: payload.createdBy ?? "unknown",
+        status: "completed",
+        commands: payload.commands ?? [],
+      });
+    });
+    return;
+  }
+
+  if (req.method === "POST" && pathname.startsWith("/bridge/edit/jobs/") && pathname.endsWith("/revert")) {
+    const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/revert", "");
+    sendJson(res, 200, { jobId, status: "reverted" });
     return;
   }
 
