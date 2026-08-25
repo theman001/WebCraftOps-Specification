@@ -1,0 +1,8 @@
+name: BridgePaper
+version: 0.1.0
+main: net.webcraftops.bridgepaper.BridgePaperPlugin
+# 실제 Paper 26.2.build.117-stable(공식 서버 jar)을 이 저장소 안에서 로컬로 띄워
+# 이 값으로 플러그인이 정상 로드/활성화되는 것을 직접 확인함(경고 없음).
+api-version: "1.21"
+author: WebCraftOps
+description: WebCraftOps Bridge HTTP endpoint for real Paper world reads/writes.

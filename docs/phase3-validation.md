@@ -69,27 +69,28 @@ curl "http://localhost:4000/bridge/registry/blocks?bridgeUrl=http://{bridgeHost}
 
 ### 2.3 프런트엔드 ↔ 백엔드 ↔ Bridge 통합 검증
 
-1. 프런트엔드 정적 서버 실행 (예: 8080)
-```
-python -m http.server 8080
-```
+백엔드가 프런트엔드 정적 파일도 같은 오리진에서 함께 서빙하므로 별도 정적 서버가
+필요 없다(2.2에서 이미 백엔드를 띄웠다면 그대로 사용).
 
-2. 브라우저에서 `http://localhost:8080/index.html` 접속
-   - Bridge URL과 Backend URL 입력
-   - **연결 테스트** 버튼 클릭
+1. 브라우저에서 `http://localhost:4000/` 접속
+   - 서버(Bridge) 주소 입력
+   - **연결** 버튼 클릭
 
 **기대 결과**
-- 연결 성공 메시지 출력
+- 연결됨 메시지 출력, "빌드" 탭으로 자동 전환
 - 팔레트 로드됨
-- 청크 디코드 결과 표시
+- 3D 뷰어에서 월드 불러오기 정상 동작
 
 ---
 
 ### 2.4 Edit Job 실행 검증 (실제 월드 변경)
 
-1. Edit Job 생성 (setBlock 예시)
+1. Edit Job 생성 (setBlock 예시, `bridgeUrl` 쿼리 파라미터 필수)
+
+> `bridgeUrl` 없이 호출하면 로컬 시뮬레이션(감사 로그만 기록, 실제 월드 미반영)으로 처리됩니다.
+
 ```
-curl -X POST http://localhost:4000/bridge/world/overworld/edit/jobs \
+curl -X POST "http://localhost:4000/bridge/world/overworld/edit/jobs?bridgeUrl=http://{bridgeHost}:{bridgePort}" \
   -H "Content-Type: application/json" \
   -d '{ "createdBy": "tester", "commands": [{"type":"setBlock","params":{"block":"minecraft:stone","pos":[0,64,0]}}] }'
 ```
@@ -101,7 +102,7 @@ curl http://localhost:4000/bridge/edit/jobs
 
 **기대 결과**
 - 작업 상태가 `completed`로 전환
-- 실제 월드에서 해당 좌표 블록 변경
+- 실제 월드에서 해당 좌표 블록 변경 (백엔드가 각 커맨드를 `POST {bridgeUrl}/bridge/command`로 전달)
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "name": "@webcraftops/backend",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "WebCraftOps backend (+ frontend 정적 서빙). node:sqlite만 쓰면 이 tsx 하나 말고는 의존성이 없다.",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.23.12"
+  }
+}

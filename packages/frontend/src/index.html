@@ -3,429 +3,649 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebCraftOps 서버 선택</title>
+    <title>WebCraftOps</title>
     <style>
+      :root {
+        --bg: #0f172a;
+        --surface: #111827;
+        --surface-alt: #0b1220;
+        --border: #1e293b;
+        --border-strong: #334155;
+        --text: #e2e8f0;
+        --text-muted: #94a3b8;
+        --text-faint: #64748b;
+        --accent: #38bdf8;
+        --accent-contrast: #0f172a;
+        --danger: #f87171;
+        --success: #34d399;
+        --warning: #facc15;
+        --radius-sm: 6px;
+        --radius: 10px;
+        --radius-lg: 14px;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-6: 1.5rem;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-        background: #0f172a;
-        color: #e2e8f0;
+        background: var(--bg);
+        color: var(--text);
         margin: 0;
-        padding: 2rem;
       }
-      .container {
-        max-width: 880px;
+
+      .shell {
+        max-width: 960px;
         margin: 0 auto;
-        background: #111827;
-        padding: 2rem;
-        border-radius: 12px;
-        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.5);
+        padding: var(--space-6);
       }
-      h1 {
-        margin-top: 0;
-        font-size: 1.8rem;
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+        margin-bottom: var(--space-6);
       }
-      label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: 600;
+
+      .topbar h1 {
+        font-size: 1.4rem;
+        margin: 0;
       }
-      input {
-        width: 100%;
-        padding: 0.75rem 1rem;
-        border-radius: 8px;
-        border: 1px solid #334155;
-        background: #0b1220;
-        color: #e2e8f0;
+
+      .tabs {
+        display: flex;
+        gap: var(--space-2);
+        background: var(--surface-alt);
+        padding: 4px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
       }
-      button {
-        margin-top: 1rem;
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
+
+      .tab-btn {
         border: none;
-        background: #38bdf8;
-        color: #0f172a;
-        font-weight: 700;
+        background: transparent;
+        color: var(--text-muted);
+        padding: 0.5rem 0.9rem;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-size: 0.85rem;
         cursor: pointer;
       }
-      button:disabled {
-        opacity: 0.6;
+
+      .tab-btn.active {
+        background: var(--accent);
+        color: var(--accent-contrast);
+      }
+
+      .tab-btn:disabled {
+        opacity: 0.4;
         cursor: not-allowed;
       }
-      .result {
-        margin-top: 1.5rem;
-        padding: 1rem;
-        border-radius: 8px;
-        background: #0b1220;
-        border: 1px solid #1e293b;
-        white-space: pre-wrap;
+
+      .tab-panel[hidden] {
+        display: none;
       }
-      .recent {
-        margin-top: 1.5rem;
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        margin-bottom: var(--space-4);
       }
-      .recent ul {
-        padding-left: 1.2rem;
+
+      .card h2 {
+        margin: 0 0 var(--space-3);
+        font-size: 1.05rem;
       }
-      .palette {
-        margin-top: 2rem;
-        background: #0b1220;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 1rem;
+
+      .card p.hint {
+        margin: 0 0 var(--space-3);
+        color: var(--text-muted);
+        font-size: 0.85rem;
       }
-      .palette h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
+
+      label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--text-muted);
       }
+
+      input,
+      textarea {
+        width: 100%;
+        padding: 0.6rem 0.8rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-strong);
+        background: var(--surface-alt);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 0.9rem;
+      }
+
+      textarea {
+        min-height: 80px;
+        font-family: var(--font-mono, monospace);
+      }
+
+      .field {
+        margin-bottom: var(--space-3);
+      }
+
+      .btn {
+        border: none;
+        border-radius: var(--radius-sm);
+        padding: 0.55rem 1rem;
+        font-weight: 700;
+        font-size: 0.85rem;
+        cursor: pointer;
+        background: var(--surface-alt);
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-primary,
+      .btn.active {
+        background: var(--accent);
+        color: var(--accent-contrast);
+        border-color: var(--accent);
+      }
+
+      .btn-danger {
+        background: transparent;
+        color: var(--danger);
+        border-color: var(--danger);
+      }
+
+      .btn-sm {
+        padding: 0.35rem 0.7rem;
+        font-size: 0.78rem;
+      }
+
+      .btn-row {
+        display: flex;
+        gap: var(--space-2);
+        flex-wrap: wrap;
+        margin-top: var(--space-2);
+      }
+
+      .status-text {
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+
+      details.advanced {
+        margin-top: var(--space-3);
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+
+      details.advanced summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      details.advanced .field {
+        margin-top: var(--space-3);
+      }
+
+      .recent-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+      }
+
+      .recent-list li {
+        background: var(--surface-alt);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0.4rem 0.9rem;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+
+      .recent-list li:hover {
+        border-color: var(--accent);
+      }
+
+      .palette-search {
+        margin-bottom: var(--space-3);
+      }
+
       .palette-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: var(--space-2);
+        max-height: 320px;
+        overflow-y: auto;
       }
+
       .palette-card {
-        background: #111827;
-        border: 1px solid #1e293b;
-        padding: 0.75rem;
-        border-radius: 8px;
-      }
-      .palette-card strong {
-        display: block;
-        font-size: 0.95rem;
-      }
-      .palette-card span {
-        font-size: 0.8rem;
-        color: #94a3b8;
-      }
-      .palette-card small {
-        display: block;
-        margin-top: 0.25rem;
-        color: #cbd5f5;
-        font-size: 0.75rem;
-      }
-      small {
-        display: block;
-        margin-top: 0.5rem;
-        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--surface-alt);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.5rem 0.6rem;
+        cursor: pointer;
+        text-align: left;
+        color: var(--text);
         font-size: 0.8rem;
       }
-      .chunk-viewer {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
+
+      .palette-card:hover {
+        border-color: var(--border-strong);
       }
-      .chunk-viewer ul {
-        padding-left: 1.2rem;
+
+      .palette-card.selected {
+        border-color: var(--accent);
+        background: rgba(56, 189, 248, 0.12);
       }
-      .viewer {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
+
+      .swatch {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        flex-shrink: 0;
       }
-      .viewer h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
+
+      .selected-block-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+        font-size: 0.85rem;
+        color: var(--text-muted);
       }
+
       .viewer-toolbar {
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex-wrap: wrap;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-3);
       }
+
       .viewer-canvas {
         width: 100%;
-        height: 360px;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
+        height: 380px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--surface-alt);
       }
-      .edit-jobs {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
-      }
-      .edit-jobs h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
-      }
-      .edit-job-grid {
+
+      .grid-list {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.75rem;
+        gap: var(--space-3);
       }
-      .edit-job-card {
-        border-radius: 8px;
-        padding: 0.75rem;
-        border: 1px solid #1e293b;
-        background: #111827;
+
+      .item-card {
+        background: var(--surface-alt);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: var(--space-3);
       }
-      .edit-job-card strong {
+
+      .item-card strong {
         display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.9rem;
+        word-break: break-all;
       }
-      .edit-job-card small {
-        margin-top: 0.3rem;
+
+      .item-card .meta {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        display: block;
+        margin-bottom: 0.2rem;
       }
-      .edit-job-actions {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 0.5rem;
+
+      .badge {
+        display: inline-block;
+        padding: 0.15rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
       }
-      .edit-job-actions button {
-        margin-top: 0;
-        padding: 0.4rem 0.75rem;
-        font-size: 0.8rem;
+
+      .badge-queued {
+        background: rgba(148, 163, 184, 0.2);
+        color: var(--text-muted);
       }
-      .edit-job-history {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
+      .badge-running {
+        background: rgba(56, 189, 248, 0.2);
+        color: var(--accent);
       }
-      .edit-job-history h3 {
-        margin-top: 0;
-        font-size: 1rem;
+      .badge-paused {
+        background: rgba(250, 204, 21, 0.2);
+        color: var(--warning);
       }
-      .history-actions {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
+      .badge-completed {
+        background: rgba(52, 211, 153, 0.2);
+        color: var(--success);
       }
+      .badge-failed,
+      .badge-canceled {
+        background: rgba(248, 113, 113, 0.2);
+        color: var(--danger);
+      }
+
+      .progress-track {
+        height: 6px;
+        border-radius: 999px;
+        background: var(--border);
+        overflow: hidden;
+        margin: 0.4rem 0;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: var(--accent);
+      }
+
+      .empty-note {
+        color: var(--text-faint);
+        font-size: 0.85rem;
+      }
+
       .history-list {
         list-style: none;
-        padding-left: 0;
+        padding: 0;
+        margin: var(--space-3) 0 0;
       }
+
       .history-list li {
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #1e293b;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.82rem;
+        color: var(--text-muted);
       }
-      .edit-job-form {
-        display: grid;
-        gap: 0.75rem;
-        margin-bottom: 1rem;
-      }
-      .edit-job-form textarea {
-        width: 100%;
-        min-height: 90px;
-        border-radius: 8px;
-        border: 1px solid #334155;
-        background: #0b1220;
-        color: #e2e8f0;
-        padding: 0.75rem 1rem;
-        font-family: "SFMono-Regular", "Menlo", monospace;
-      }
-      .blueprint {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
-      }
-      .blueprint h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
-      }
-      .blueprint-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.75rem;
-      }
-      .blueprint-card {
-        border-radius: 8px;
-        padding: 0.75rem;
-        border: 1px solid #1e293b;
-        background: #111827;
-      }
-      .blueprint-card strong {
-        display: block;
-      }
-      .blueprint-actions {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 0.5rem;
-      }
-      .blueprint-actions button {
-        margin-top: 0;
-        padding: 0.4rem 0.75rem;
-        font-size: 0.8rem;
-      }
-      .audit {
-        margin-top: 2rem;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #1e293b;
-        background: #0b1220;
-      }
-      .audit h2 {
-        margin-top: 0;
-        font-size: 1.2rem;
-      }
+
       .audit-list {
         list-style: none;
-        padding-left: 0;
+        padding: 0;
+        margin: 0;
       }
+
       .audit-list li {
         padding: 0.6rem 0;
-        border-bottom: 1px solid #1e293b;
+        border-bottom: 1px solid var(--border);
       }
-      .audit-filters {
-        display: grid;
-        gap: 0.75rem;
-        margin-bottom: 1rem;
+
+      .audit-list strong {
+        display: block;
+        font-size: 0.88rem;
       }
-      .audit-actions {
+
+      .audit-list .meta {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+      }
+
+      dialog {
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+        width: min(360px, 90vw);
+      }
+
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.6);
+      }
+
+      dialog h3 {
+        margin: 0 0 var(--space-3);
+        font-size: 1rem;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+
+      .console-log {
+        background: var(--surface-alt);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: var(--space-3);
+        height: 420px;
+        overflow-y: auto;
+        font-family: var(--font-mono, monospace);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+      }
+
+      .console-command-row {
         display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+      }
+
+      .console-command-row input {
+        flex: 1;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <h1>Bridge 서버 주소 입력</h1>
-      <p>Bridge URL을 입력하고 연결 테스트를 진행하세요.</p>
-      <label for="bridgeUrl">Bridge URL</label>
-      <input id="bridgeUrl" type="text" placeholder="http://localhost:4100" />
-      <label for="backendUrl">Backend URL (선택)</label>
-      <input id="backendUrl" type="text" placeholder="http://localhost:4000" />
-      <small>백엔드가 브릿지 프록시를 제공하면 CORS 없이 레지스트리를 가져옵니다.</small>
-      <button id="testButton">연결 테스트</button>
-      <div class="result" id="result">대기 중입니다.</div>
-      <div class="recent">
-        <strong>최근 연결</strong>
-        <ul id="recentList"></ul>
-      </div>
-      <section class="palette">
-        <h2>레지스트리 블록 팔레트</h2>
-        <div id="paletteStatus">Bridge 연결 후 팔레트를 불러옵니다.</div>
-        <div class="palette-grid" id="paletteGrid"></div>
-      </section>
-      <section class="chunk-viewer">
-        <h2>청크 이진 디코드 (샘플)</h2>
-        <p>Bridge에서 청크 바이너리를 가져와 Web Worker로 디코드합니다.</p>
-        <button id="chunkButton">샘플 청크 디코드</button>
-        <div id="chunkStatus">대기 중입니다.</div>
-        <ul id="chunkResult"></ul>
-      </section>
-      <section class="viewer">
-        <h2>3D 월드 뷰어 (초기)</h2>
-        <p>청크 디코드 결과를 Three.js로 렌더링하고 편집 도구를 연결합니다.</p>
-        <div class="viewer-toolbar">
-          <button id="toolBrush">브러시</button>
-          <button id="toolSelect">선택</button>
-          <button id="toolFill">채우기</button>
-          <button id="viewerClear">렌더 초기화</button>
-        </div>
-        <div id="viewerStatus">청크 디코드 후 렌더링됩니다.</div>
-        <canvas id="viewerCanvas" class="viewer-canvas"></canvas>
-      </section>
-      <section class="edit-jobs">
-        <h2>Edit Job 시스템 (Command 패턴)</h2>
-        <p>Job 생성/조회 및 일시정지/재개/취소를 UI에서 확인합니다.</p>
-        <div class="edit-job-form">
-          <div>
-            <label for="createdBy">생성자 ID</label>
-            <input id="createdBy" type="text" placeholder="mc_uuid" />
+    <div class="shell">
+      <header class="topbar">
+        <h1>WebCraftOps</h1>
+        <nav class="tabs" id="tabNav">
+          <button class="tab-btn active" data-tab="connect">연결</button>
+          <button class="tab-btn" data-tab="build" disabled>빌드</button>
+          <button class="tab-btn" data-tab="blueprints" disabled>블루프린트</button>
+          <button class="tab-btn" data-tab="jobs" disabled>작업 &amp; 로그</button>
+          <button class="tab-btn" data-tab="console" disabled>콘솔</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="tab-panel" data-panel="connect">
+          <div class="card">
+            <h2>서버 연결</h2>
+            <p class="hint">마인크래프트 서버 주소를 입력하고 연결하세요.</p>
+            <div class="field">
+              <label for="bridgeUrl">서버 주소</label>
+              <input id="bridgeUrl" type="text" placeholder="http://localhost:8123" />
+            </div>
+            <div class="btn-row">
+              <button id="testButton" class="btn btn-primary">연결</button>
+            </div>
+            <p class="status-text" id="result">대기 중입니다.</p>
           </div>
-          <div>
-            <label for="commandType">커맨드 타입</label>
-            <input id="commandType" list="commandTypes" placeholder="setBlock" />
-            <datalist id="commandTypes">
-              <option value="setBlock"></option>
-              <option value="fill"></option>
-              <option value="replace"></option>
-              <option value="pasteBlueprint"></option>
-              <option value="clone"></option>
-            </datalist>
+          <div class="card">
+            <h2>최근 연결</h2>
+            <ul class="recent-list" id="recentList"></ul>
           </div>
-          <div>
-            <label for="commandParams">커맨드 파라미터 (JSON)</label>
-            <textarea id="commandParams" placeholder='{"block":"minecraft:stone"}'></textarea>
+        </section>
+
+        <section class="tab-panel" data-panel="build" hidden>
+          <div class="card">
+            <h2>블록 팔레트</h2>
+            <input
+              class="palette-search"
+              id="paletteSearch"
+              type="text"
+              placeholder="블록 검색..."
+            />
+            <p class="status-text" id="paletteStatus">연결 후 팔레트를 불러옵니다.</p>
+            <div class="palette-grid" id="paletteGrid"></div>
+            <div class="selected-block-bar">
+              <span>선택된 블록:</span>
+              <strong id="selectedBlockLabel">없음</strong>
+            </div>
           </div>
-          <button id="createJobButton">Edit Job 생성</button>
-          <div id="editJobStatus">Bridge 연결 후 작업을 생성할 수 있습니다.</div>
-        </div>
-        <div>
-          <button id="refreshJobsButton">작업 목록 새로고침</button>
-        </div>
-        <div class="edit-job-grid" id="editJobList"></div>
-        <div class="edit-job-history">
-          <h3>Undo/Redo 작업 기록</h3>
-          <p>상태 변경 내역을 기록하고 마지막 작업을 되돌리거나 재실행합니다.</p>
-          <div class="history-actions">
-            <button id="undoButton">Undo</button>
-            <button id="redoButton">Redo</button>
+          <div class="card">
+            <h2>3D 월드 뷰어</h2>
+            <p class="hint">드래그: 시점 회전 · 휠: 확대/축소 · 오른쪽 드래그: 이동</p>
+            <div class="viewer-toolbar">
+              <button id="toolBrush" class="btn active" data-tool="brush">브러시</button>
+              <button id="toolSelect" class="btn" data-tool="select">조회</button>
+              <button id="viewerLoadButton" class="btn btn-primary">월드 불러오기</button>
+              <button id="viewerSettingsButton" class="btn btn-sm">시점 설정</button>
+            </div>
+            <div class="viewer-toolbar">
+              <input id="resourcePackFile" type="file" accept=".zip" style="max-width: 220px" />
+              <button id="resourcePackButton" class="btn btn-sm">리소스팩 적용</button>
+            </div>
+            <p class="status-text" id="viewerStatus">월드를 불러오면 렌더링됩니다.</p>
+            <canvas id="viewerCanvas" class="viewer-canvas"></canvas>
+
+            <dialog id="viewerSettingsDialog">
+              <h3>3D 뷰어 설정</h3>
+              <div class="field">
+                <label for="rotateSpeedInput">회전 속도 (드래그) — <span id="rotateSpeedValue">1.0</span></label>
+                <input id="rotateSpeedInput" type="range" min="0.1" max="3" step="0.1" value="1" />
+              </div>
+              <div class="field">
+                <label for="zoomSpeedInput">확대/축소 속도 (휠) — <span id="zoomSpeedValue">1.0</span></label>
+                <input id="zoomSpeedInput" type="range" min="0.1" max="3" step="0.1" value="1" />
+              </div>
+              <div class="field">
+                <label for="panSpeedInput">이동 속도 (오른쪽 드래그) — <span id="panSpeedValue">1.0</span></label>
+                <input id="panSpeedInput" type="range" min="0.1" max="3" step="0.1" value="1" />
+              </div>
+              <div class="field">
+                <label for="chunkRadiusInput">불러올 청크 반경 (중심 제외 사방)</label>
+                <input id="chunkRadiusInput" type="number" min="0" max="4" step="1" value="0" />
+              </div>
+              <div class="btn-row">
+                <button id="viewerSettingsCloseButton" class="btn btn-primary">닫기</button>
+              </div>
+            </dialog>
           </div>
-          <div id="historyStatus">기록이 없습니다.</div>
-          <ul class="history-list" id="historyList"></ul>
-        </div>
-      </section>
-      <section class="blueprint">
-        <h2>Blueprint/Schematic 관리</h2>
-        <p>schem 파일을 등록하고 작업 큐에 붙여넣기 커맨드를 생성합니다.</p>
-        <div class="edit-job-form">
-          <div>
-            <label for="blueprintFile">Schematic 파일</label>
-            <input id="blueprintFile" type="file" accept=".schem" />
+        </section>
+
+        <section class="tab-panel" data-panel="blueprints" hidden>
+          <div class="card">
+            <h2>블루프린트 업로드</h2>
+            <div class="field">
+              <label for="blueprintFile">Schematic 파일</label>
+              <input id="blueprintFile" type="file" accept=".schem" />
+            </div>
+            <div class="field">
+              <label for="blueprintName">이름</label>
+              <input id="blueprintName" type="text" placeholder="castle_v1" />
+            </div>
+            <div class="field">
+              <label for="blueprintTags">태그 (쉼표 구분)</label>
+              <input id="blueprintTags" type="text" placeholder="castle, medieval" />
+            </div>
+            <div class="btn-row">
+              <button id="uploadBlueprintButton" class="btn btn-primary">업로드</button>
+            </div>
+            <p class="status-text" id="blueprintStatus">파일을 선택하면 등록합니다.</p>
           </div>
-          <div>
-            <label for="blueprintName">Blueprint 이름</label>
-            <input id="blueprintName" type="text" placeholder="castle_v1" />
+          <div class="card">
+            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
+              <h2 style="margin: 0; flex: 1">블루프린트 목록</h2>
+              <button id="refreshBlueprintsButton" class="btn btn-sm">새로고침</button>
+            </div>
+            <div class="grid-list" id="blueprintList"></div>
           </div>
-          <div>
-            <label for="blueprintTags">태그 (쉼표 구분)</label>
-            <input id="blueprintTags" type="text" placeholder="castle, medieval" />
+        </section>
+
+        <section class="tab-panel" data-panel="jobs" hidden>
+          <div class="card">
+            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
+              <h2 style="margin: 0; flex: 1">작업 목록</h2>
+              <button id="refreshJobsButton" class="btn btn-sm">새로고침</button>
+            </div>
+            <p class="status-text" id="editJobStatus"></p>
+            <div class="grid-list" id="editJobList"></div>
           </div>
-          <button id="uploadBlueprintButton">Blueprint 업로드</button>
-          <div id="blueprintStatus">파일을 선택하면 메타데이터를 등록합니다.</div>
-        </div>
-        <div>
-          <button id="refreshBlueprintsButton">블루프린트 목록 새로고침</button>
-        </div>
-        <div class="blueprint-grid" id="blueprintList"></div>
-      </section>
-      <section class="audit">
-        <h2>감사 로그 대시보드 (준비)</h2>
-        <p>작업 큐 실행 로그를 조회해 감사 대시보드 기반을 점검합니다.</p>
-        <div class="audit-filters">
-          <div>
-            <label for="auditUserId">사용자 ID</label>
-            <input id="auditUserId" type="text" placeholder="mc_uuid" />
+          <div class="card">
+            <h2>되돌리기 / 다시 실행</h2>
+            <div class="btn-row" style="margin-top: 0">
+              <button id="undoButton" class="btn">Undo</button>
+              <button id="redoButton" class="btn">Redo</button>
+            </div>
+            <p class="status-text" id="historyStatus">기록이 없습니다.</p>
+            <ul class="history-list" id="historyList"></ul>
           </div>
-          <div>
-            <label for="auditWorldId">월드 ID</label>
-            <input id="auditWorldId" type="text" placeholder="overworld" />
+          <div class="card">
+            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
+              <h2 style="margin: 0; flex: 1">감사 로그</h2>
+              <button id="refreshAuditButton" class="btn btn-sm">새로고침</button>
+            </div>
+            <details class="advanced">
+              <summary>고급 필터</summary>
+              <div class="field">
+                <label for="auditUserId">사용자 ID</label>
+                <input id="auditUserId" type="text" placeholder="mc_uuid" />
+              </div>
+              <div class="field">
+                <label for="auditWorldId">월드 ID</label>
+                <input id="auditWorldId" type="text" placeholder="overworld" />
+              </div>
+              <div class="field">
+                <label for="auditCommandType">커맨드 타입</label>
+                <input id="auditCommandType" type="text" placeholder="setBlock" />
+              </div>
+              <div class="field">
+                <label for="auditSince">시작 시간</label>
+                <input id="auditSince" type="datetime-local" />
+              </div>
+              <div class="field">
+                <label for="auditUntil">종료 시간</label>
+                <input id="auditUntil" type="datetime-local" />
+              </div>
+              <div class="field">
+                <label for="auditLimit">조회 개수</label>
+                <input id="auditLimit" type="number" min="1" max="500" placeholder="100" />
+              </div>
+            </details>
+            <p class="status-text" id="auditStatus">조회 대기 중입니다.</p>
+            <ul class="audit-list" id="auditList"></ul>
+            <div class="btn-row">
+              <button id="loadMoreAuditButton" class="btn btn-sm" disabled>더 보기</button>
+            </div>
           </div>
-          <div>
-            <label for="auditCommandType">커맨드 타입</label>
-            <input id="auditCommandType" type="text" placeholder="setBlock" />
+        </section>
+
+        <section class="tab-panel" data-panel="console" hidden>
+          <div class="card">
+            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
+              <h2 style="margin: 0; flex: 1">서버 콘솔</h2>
+              <span class="status-text" id="consoleStatus">연결 대기 중</span>
+            </div>
+            <p class="hint">관리자(콘솔) 권한 실시간 로그 · 채팅도 함께 표시됩니다.</p>
+            <pre class="console-log" id="consoleLog"></pre>
+            <form class="console-command-row" id="consoleCommandForm">
+              <input
+                id="consoleCommandInput"
+                type="text"
+                placeholder="명령어 입력 (예: say hello, list)"
+                autocomplete="off"
+              />
+              <button type="submit" class="btn btn-primary">실행</button>
+            </form>
           </div>
-          <div>
-            <label for="auditSince">시작 시간</label>
-            <input id="auditSince" type="datetime-local" />
-          </div>
-          <div>
-            <label for="auditUntil">종료 시간</label>
-            <input id="auditUntil" type="datetime-local" />
-          </div>
-          <div>
-            <label for="auditLimit">조회 개수</label>
-            <input id="auditLimit" type="number" min="1" max="500" placeholder="100" />
-          </div>
-        </div>
-        <div class="audit-actions">
-          <button id="refreshAuditButton">감사 로그 새로고침</button>
-          <button id="loadMoreAuditButton" disabled>추가 불러오기</button>
-        </div>
-        <div id="auditStatus">조회 대기 중입니다.</div>
-        <ul class="audit-list" id="auditList"></ul>
-      </section>
+        </section>
+      </main>
     </div>
     <script type="module" src="./app.js"></script>
   </body>

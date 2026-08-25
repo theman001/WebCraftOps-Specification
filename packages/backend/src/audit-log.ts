@@ -252,7 +252,7 @@ const listAuditEntriesPostgres = async (
     LIMIT ${limit};
   `;
   Object.keys(params).forEach((key, index) => {
-    query = query.replace(`$${key}`, `$${index + 1}`);
+    query = query.replaceAll(`$${key}`, `$${index + 1}`);
   });
   const result = await client.query(query, values);
   const items = result.rows.map((row: any) => ({

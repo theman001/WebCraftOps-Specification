@@ -1,12 +1,17 @@
 import http from "node:http";
 import { URL } from "node:url";
+import { randomUUID } from "node:crypto";
 
 type BridgeInfo = {
   name: string;
   version: string;
   loader: "fabric" | "forge" | "neoforge" | "unknown";
   mcVersion: string;
+  bootId: string;
 };
+
+// 프로세스가 뜰 때마다 새로 생성 — 프런트가 이 값의 변화로 브릿지(마크 서버) 재시작을 감지한다.
+const BRIDGE_BOOT_ID = randomUUID();
 
 type RegistryBlockEntry = {
   id: string;
@@ -23,9 +28,15 @@ type RegistryDump = {
   generatedAt: string;
 };
 
-type ChunkPayload = {
+type ChunkSectionPayload = {
   palette: string[];
   indices: number[];
+};
+
+type ChunkPayload = {
+  cx: number;
+  cz: number;
+  sections: ChunkSectionPayload[];
 };
 
 type EditJobRequest = {
@@ -68,42 +79,81 @@ const bridgeInfo: BridgeInfo = {
   version: "0.1.0",
   loader: "unknown",
   mcVersion: "1.20.x",
+  bootId: BRIDGE_BOOT_ID,
 };
 
 const sampleChunk: ChunkPayload = {
-  palette: ["minecraft:stone", "minecraft:oak_log", "minecraft:glass_pane", "create:shaft"],
-  indices: [
-    0, 0, 1, 1, 2, 2, 3, 3,
-    0, 1, 2, 3, 0, 1, 2, 3,
+  cx: 0,
+  cz: 0,
+  sections: [
+    {
+      palette: ["minecraft:stone", "minecraft:oak_log", "minecraft:glass_pane", "create:shaft"],
+      indices: [
+        0, 0, 1, 1, 2, 2, 3, 3,
+        0, 1, 2, 3, 0, 1, 2, 3,
+      ],
+    },
   ],
+};
+
+// Bridge 유선 포맷: varint(cx,cz,sectionCount) + 섹션별 팔레트 + RLE 인덱스.
+// bridge-core/fabric-bridge.ts의 encodeChunkPayload와 동일한 포맷을 사용해야
+// 프런트엔드 chunk-worker.js가 디코드할 수 있다.
+const writeVarInt = (bytes: number[], value: number) => {
+  let v = value >>> 0;
+  while (v >= 0x80) {
+    bytes.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  bytes.push(v);
+};
+
+const encodeRle = (values: number[]) => {
+  if (values.length === 0) {
+    return [];
+  }
+  const result: Array<{ value: number; count: number }> = [];
+  let current = values[0];
+  let count = 1;
+  for (let i = 1; i < values.length; i += 1) {
+    const value = values[i];
+    if (value === current) {
+      count += 1;
+    } else {
+      result.push({ value: current, count });
+      current = value;
+      count = 1;
+    }
+  }
+  result.push({ value: current, count });
+  return result;
 };
 
 const encodeChunkPayload = (payload: ChunkPayload) => {
   const encoder = new TextEncoder();
-  const paletteEntries = payload.palette.map((entry) => encoder.encode(entry));
-  const paletteSize = paletteEntries.reduce((sum, entry) => sum + 1 + entry.length, 0);
-  const indicesLength = payload.indices.length;
-  const buffer = new ArrayBuffer(1 + paletteSize + 2 + indicesLength);
-  const view = new DataView(buffer);
-  let offset = 0;
+  const bytes: number[] = [];
 
-  view.setUint8(offset, payload.palette.length);
-  offset += 1;
+  writeVarInt(bytes, payload.cx);
+  writeVarInt(bytes, payload.cz);
+  writeVarInt(bytes, payload.sections.length);
 
-  paletteEntries.forEach((entry) => {
-    view.setUint8(offset, entry.length);
-    offset += 1;
-    new Uint8Array(buffer, offset, entry.length).set(entry);
-    offset += entry.length;
+  payload.sections.forEach((section) => {
+    writeVarInt(bytes, section.palette.length);
+    section.palette.forEach((id) => {
+      const encoded = encoder.encode(id);
+      writeVarInt(bytes, encoded.length);
+      bytes.push(...encoded);
+    });
+
+    const rle = encodeRle(section.indices);
+    writeVarInt(bytes, rle.length);
+    rle.forEach((entry) => {
+      writeVarInt(bytes, entry.count);
+      writeVarInt(bytes, entry.value);
+    });
   });
 
-  view.setUint16(offset, indicesLength);
-  offset += 2;
-  payload.indices.forEach((value, index) => {
-    view.setUint8(offset + index, value);
-  });
-
-  return buffer;
+  return new Uint8Array(bytes).buffer;
 };
 
 const sendJson = (res: http.ServerResponse, status: number, payload: unknown) => {
@@ -169,6 +219,16 @@ const handleRequest = (req: http.IncomingMessage, res: http.ServerResponse) => {
   if (req.method === "POST" && pathname.startsWith("/bridge/edit/jobs/") && pathname.endsWith("/revert")) {
     const jobId = pathname.replace("/bridge/edit/jobs/", "").replace("/revert", "");
     sendJson(res, 200, { jobId, status: "reverted" });
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/bridge/command") {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    req.on("end", () => {
+      const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf-8")) : {};
+      sendJson(res, 200, { ok: true, type: body.type, mode: body.mode ?? "apply" });
+    });
     return;
   }
 

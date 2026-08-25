@@ -1,0 +1,5 @@
+node_modules/
+data/
+packages/backend/data/
+*.sqlite
+.env

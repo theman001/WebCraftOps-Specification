@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { recordAuditEntry } from "./audit-log";
+import { bridgeHeaders } from "./bridge-auth";
 
 export type CommandType = "setBlock" | "fill" | "replace" | "pasteBlueprint" | "clone";
+const COMMAND_TYPES = new Set<CommandType>(["setBlock", "fill", "replace", "pasteBlueprint", "clone"]);
 
 export type CommandPayload = {
   type: CommandType;
@@ -21,41 +23,39 @@ export interface Command {
   revert(context: CommandContext): Promise<void>;
 }
 
-const createCommand = (payload: CommandPayload): Command => {
-  switch (payload.type) {
-    case "setBlock":
-      return {
-        type: "setBlock",
-        async apply() {},
-        async revert() {},
-      };
-    case "fill":
-      return {
-        type: "fill",
-        async apply() {},
-        async revert() {},
-      };
-    case "replace":
-      return {
-        type: "replace",
-        async apply() {},
-        async revert() {},
-      };
-    case "pasteBlueprint":
-      return {
-        type: "pasteBlueprint",
-        async apply() {},
-        async revert() {},
-      };
-    case "clone":
-      return {
-        type: "clone",
-        async apply() {},
-        async revert() {},
-      };
-    default:
-      throw new Error("지원하지 않는 커맨드 타입입니다.");
+// bridgeUrl이 없으면(로컬 시뮬레이션) 아무 것도 하지 않고, 있으면 Bridge에 실제로 명령을 전달한다.
+const sendToBridge = async (
+  bridgeUrl: string | undefined,
+  payload: CommandPayload,
+  mode: "apply" | "revert",
+) => {
+  if (!bridgeUrl) {
+    return;
   }
+  const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+  const response = await fetch(`${normalizedUrl}/bridge/command`, {
+    method: "POST",
+    headers: bridgeHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ type: payload.type, params: payload.params, mode }),
+  });
+  if (!response.ok) {
+    throw new Error(`Bridge 커맨드 실행 실패 (${response.status})`);
+  }
+};
+
+const createCommand = (payload: CommandPayload, bridgeUrl: string | undefined): Command => {
+  if (!COMMAND_TYPES.has(payload.type)) {
+    throw new Error("지원하지 않는 커맨드 타입입니다.");
+  }
+  return {
+    type: payload.type,
+    async apply() {
+      await sendToBridge(bridgeUrl, payload, "apply");
+    },
+    async revert() {
+      await sendToBridge(bridgeUrl, payload, "revert");
+    },
+  };
 };
 
 export type EditJobStatus = "queued" | "running" | "paused" | "completed" | "failed" | "canceled";
@@ -84,6 +84,7 @@ export type EditJob = {
   jobId: string;
   worldId: string;
   createdBy: string;
+  bridgeUrl?: string;
   status: EditJobStatus;
   policy: EditJobPolicy;
   stats: EditJobStats;
@@ -94,13 +95,19 @@ export type EditJob = {
 
 const jobs = new Map<string, EditJob>();
 
-export const createEditJob = (worldId: string, createdBy: string, commands: CommandPayload[]) => {
+export const createEditJob = (
+  worldId: string,
+  createdBy: string,
+  commands: CommandPayload[],
+  bridgeUrl?: string,
+) => {
   const jobId = randomUUID();
   const now = new Date().toISOString();
   const job: EditJob = {
     jobId,
     worldId,
     createdBy,
+    bridgeUrl,
     status: "queued",
     policy: {
       adaptiveThrottle: true,
@@ -166,7 +173,7 @@ export const runEditJob = async (
       const batchSize = Math.max(1, job.stats.batchSize);
       const batch = job.commands.slice(index, index + batchSize);
       for (const payload of batch) {
-        const command = createCommand(payload);
+        const command = createCommand(payload, job.bridgeUrl);
         if (mode === "revert") {
           await command.revert(context);
         } else {

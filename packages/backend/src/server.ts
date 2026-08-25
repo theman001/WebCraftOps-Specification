@@ -1,6 +1,10 @@
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { URL } from "node:url";
+import { Readable } from "node:stream";
 import {
   cancelEditJob,
   createEditJob,
@@ -12,6 +16,11 @@ import {
   updateEditJobMetrics,
 } from "./edit-jobs";
 import { listAuditEntries } from "./audit-log";
+import { bridgeHeaders } from "./bridge-auth";
+
+// 프로세스가 뜰 때마다 새로 생성 — 프런트가 이 값의 변화로 백엔드 재시작을 감지해
+// 세션을 끊는다(요구사항: 새로고침만으론 안 끊기고, 서버 재기동 시에는 끊김).
+const BACKEND_BOOT_ID = randomUUID();
 
 type ServerProfile = {
   id: string;
@@ -71,6 +80,57 @@ const sendJson = (res: http.ServerResponse, status: number, payload: unknown) =>
   res.end(body);
 };
 
+// 프런트엔드를 별도 서버로 안 띄우고 백엔드가 같은 오리진에서 정적 파일까지 서빙한다.
+// 사용자는 Backend 주소를 몰라도 되고(항상 같은 오리진), Bridge(마크 서버) 주소만 입력하면 된다.
+const FRONTEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../frontend/src");
+
+const STATIC_MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+};
+
+const serveStaticFile = (res: http.ServerResponse, pathname: string): boolean => {
+  const relativePath = pathname === "/" ? "/index.html" : pathname;
+  const filePath = path.join(FRONTEND_DIR, relativePath);
+  // 경로 탈출(path traversal) 방지: 반드시 FRONTEND_DIR 하위 파일이어야 한다.
+  if (filePath !== FRONTEND_DIR && !filePath.startsWith(FRONTEND_DIR + path.sep)) {
+    return false;
+  }
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    return false;
+  }
+  const contentType = STATIC_MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream";
+
+  // Cloudflare 등 프런트단 CDN이 .js를 엣지에서 캐싱해버리면 origin의
+  // Cache-Control이 이미 캐싱된 옛 응답에는 소급 적용되지 않는다. index.html이
+  // 참조하는 스크립트 URL 자체를 매 요청마다 다르게 만들어 캐시를 무력화한다.
+  if (path.extname(filePath) === ".html") {
+    const cacheBust = Date.now();
+    const html = fs
+      .readFileSync(filePath, "utf-8")
+      .replace(/src="\.\/app\.js"/, `src="./app.js?v=${cacheBust}"`);
+    const htmlBody = Buffer.from(html, "utf-8");
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": htmlBody.length,
+      "Cache-Control": "no-store",
+    });
+    res.end(htmlBody);
+    return true;
+  }
+
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Content-Length": body.length,
+    "Cache-Control": "no-store",
+  });
+  res.end(body);
+  return true;
+};
+
 const sendNotFound = (res: http.ServerResponse) => {
   sendJson(res, 404, { message: "지원하지 않는 경로입니다." });
 };
@@ -78,7 +138,7 @@ const sendNotFound = (res: http.ServerResponse) => {
 const testBridgeConnection = async (bridgeUrl: string): Promise<BridgeTestResult> => {
   try {
     const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-    const response = await fetch(`${normalizedUrl}/bridge/info`);
+    const response = await fetch(`${normalizedUrl}/bridge/info`, { headers: bridgeHeaders() });
     const info = await response.json().catch(() => undefined);
 
     return {
@@ -99,7 +159,7 @@ const testBridgeConnection = async (bridgeUrl: string): Promise<BridgeTestResult
 const proxyBridgeRequest = async (bridgeUrl: string, path: string): Promise<BridgeProxyResult> => {
   try {
     const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-    const response = await fetch(`${normalizedUrl}${path}`);
+    const response = await fetch(`${normalizedUrl}${path}`, { headers: bridgeHeaders() });
     const payload = await response.json().catch(() => undefined);
 
     return {
@@ -118,6 +178,18 @@ const proxyBridgeRequest = async (bridgeUrl: string, path: string): Promise<Brid
 };
 
 const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
+  // 프런트엔드가 백엔드와 다른 오리진(포트)에서 서빙되므로 CORS 허용이 없으면
+  // 브라우저에서 아무 요청도 성공하지 못한다.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (!req.url || !req.method) {
     sendNotFound(res);
     return;
@@ -127,7 +199,7 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
   const { pathname } = url;
 
   if (req.method === "GET" && pathname === "/health") {
-    sendJson(res, 200, { status: "ok" });
+    sendJson(res, 200, { status: "ok", bootId: BACKEND_BOOT_ID });
     return;
   }
 
@@ -220,25 +292,8 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 400, { message: "commands 배열이 필요합니다." });
       return;
     }
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (bridgeUrl) {
-      try {
-        const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-        const response = await fetch(`${normalizedUrl}/bridge/world/overworld/edit/jobs`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const payload = await response.json().catch(() => undefined);
-        sendJson(res, response.ok ? 201 : 502, payload ?? { message: "브릿지 응답 오류" });
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "알 수 없는 오류";
-        sendJson(res, 502, { message });
-        return;
-      }
-    }
-    const job = createEditJob("overworld", body.createdBy ?? "unknown", body.commands as any);
+    const bridgeUrl = url.searchParams.get("bridgeUrl") ?? undefined;
+    const job = createEditJob("overworld", body.createdBy ?? "unknown", body.commands as any, bridgeUrl);
     try {
       await runEditJob(job);
     } catch {
@@ -378,22 +433,6 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 404, { message: "작업을 찾을 수 없습니다." });
       return;
     }
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (bridgeUrl) {
-      try {
-        const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-        const response = await fetch(`${normalizedUrl}/bridge/edit/jobs/${jobId}/revert`, {
-          method: "POST",
-        });
-        const payload = await response.json().catch(() => undefined);
-        sendJson(res, response.ok ? 200 : 502, payload ?? { message: "브릿지 응답 오류" });
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "알 수 없는 오류";
-        sendJson(res, 502, { message });
-        return;
-      }
-    }
     try {
       await runEditJob(job, { mode: "revert" });
       sendJson(res, 200, job);
@@ -446,7 +485,17 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     }
     try {
       const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-      const response = await fetch(`${normalizedUrl}/bridge/world/overworld/chunks`);
+      // cx/cz를 그대로 브릿지로 전달 — 없으면 bridge-paper가 기본값 0,0으로 처리한다.
+      const cx = url.searchParams.get("cx");
+      const cz = url.searchParams.get("cz");
+      const chunkQuery = new URLSearchParams();
+      if (cx !== null) chunkQuery.set("cx", cx);
+      if (cz !== null) chunkQuery.set("cz", cz);
+      const queryString = chunkQuery.toString();
+      const response = await fetch(
+        `${normalizedUrl}/bridge/world/overworld/chunks${queryString ? `?${queryString}` : ""}`,
+        { headers: bridgeHeaders() },
+      );
       const buffer = await response.arrayBuffer();
       res.writeHead(response.ok ? 200 : 502, {
         "Content-Type": "application/octet-stream",
@@ -457,6 +506,89 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       const message = error instanceof Error ? error.message : "알 수 없는 오류";
       sendJson(res, 502, { ok: false, status: 0, error: message });
     }
+    return;
+  }
+
+  // 브라우저 EventSource는 커스텀 헤더(X-Bridge-Token)를 못 보낸다 — 프런트는 항상
+  // 같은 오리진인 이 프록시로만 연결하고, 여기서 브릿지로 넘어갈 때만 토큰을 싣는다.
+  if (req.method === "GET" && pathname === "/bridge/console/stream") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+    const controller = new AbortController();
+    try {
+      const upstream = await fetch(`${normalizedUrl}/bridge/console/stream`, {
+        headers: bridgeHeaders(),
+        signal: controller.signal,
+      });
+      if (!upstream.ok || !upstream.body) {
+        sendJson(res, 502, { message: "브릿지 콘솔 스트림 연결에 실패했습니다." });
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+      });
+      const upstreamStream = Readable.fromWeb(upstream.body as any);
+      // req의 "close"만 믿으면 클라이언트가 갑자기 끊겼을 때(브라우저 탭 종료, 네트워크
+      // 단절 등) 안 잡히는 경우가 있어 브릿지로 가는 커넥션이 계속 열린 채로 새는 걸
+      // 실측으로 확인했다 — res 쪽도 같이 감시해서 어느 쪽이 먼저 닫히든 정리한다.
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        controller.abort();
+        upstreamStream.destroy();
+      };
+      req.on("close", cleanup);
+      res.on("close", cleanup);
+      upstreamStream.on("error", () => {
+        if (!res.writableEnded) res.end();
+      });
+      upstreamStream.pipe(res);
+    } catch (error) {
+      if (!res.headersSent) {
+        const message = error instanceof Error ? error.message : "알 수 없는 오류";
+        sendJson(res, 502, { ok: false, error: message });
+      } else if (!res.writableEnded) {
+        res.end();
+      }
+    }
+    return;
+  }
+
+  if (req.method === "POST" && pathname === "/bridge/console/command") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const body = await readJsonBody<{ command?: string }>(req);
+    if (!body?.command) {
+      sendJson(res, 400, { message: "command가 필요합니다." });
+      return;
+    }
+    const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+    try {
+      const response = await fetch(`${normalizedUrl}/bridge/console/command`, {
+        method: "POST",
+        headers: bridgeHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ command: body.command }),
+      });
+      const payload = await response.json().catch(() => undefined);
+      sendJson(res, response.ok ? 200 : 502, payload ?? { ok: response.ok });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "알 수 없는 오류";
+      sendJson(res, 502, { ok: false, error: message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && serveStaticFile(res, pathname)) {
     return;
   }
 

@@ -3,7 +3,7 @@
 export type BridgeInfo = {
   name: string;
   version: string;
-  loader: "fabric" | "forge" | "neoforge" | "unknown";
+  loader: "fabric" | "forge" | "neoforge" | "paper" | "unknown";
   mcVersion: string;
 };
 

@@ -1,0 +1,15 @@
+services:
+  webcraftops-backend:
+    build: .
+    container_name: webcraftops_backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      # bridge-paper와 같은 값이어야 한다(packages/bridge-paper의 BRIDGE_TOKEN과 일치).
+      BRIDGE_TOKEN: "${BRIDGE_TOKEN:?BRIDGE_TOKEN 환경변수를 셸 또는 .env 파일에 설정하세요}"
+    volumes:
+      - webcraftops-data:/app/backend/data
+
+volumes:
+  webcraftops-data:
