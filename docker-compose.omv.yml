@@ -1,0 +1,24 @@
+# OMV(OpenMediaVault) GUI의 Compose 플러그인에 붙여넣기용.
+# 로컬 파일이 필요 없도록 GitHub 저장소를 빌드 컨텍스트로 직접 사용한다(저장소가
+# public이라 별도 인증 없이 clone된다). 로컬 체크아웃에서 빌드할 때는(예: 개발 중
+# 코드 변경을 바로 반영하고 싶을 때) 대신 저장소 루트의 docker-compose.yml(build: .)을 쓴다.
+services:
+  webcraftops-backend:
+    build:
+      context: https://github.com/theman001/WebCraftOps-Specification.git#main
+      dockerfile: Dockerfile
+    container_name: webcraftops_backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      # 반드시 bridge-paper 플러그인(config.yml 또는 BRIDGE_TOKEN)과 같은 값으로 채울 것.
+      # 비워두면(빈 문자열) 토큰 없이 요청하다 브릿지가 401을 명확히 반환한다 — 절대
+      # 이 자리에 안내 문구 같은 값을 넣지 말 것(비-ASCII 문자가 헤더에 들어가면
+      # "Cannot convert argument to a ByteString" 오류로 조용히 깨진다).
+      BRIDGE_TOKEN: ""
+    volumes:
+      - webcraftops-data:/app/backend/data
+
+volumes:
+  webcraftops-data:

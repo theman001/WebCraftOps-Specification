@@ -1259,9 +1259,15 @@ const loadAuditEntries = async (mode = "replace") => {
 
 // ---- 콘솔 ----
 
+// 콘솔 로그는 터미널용 ANSI 색상 코드를 그대로 담고 있고(예: /help 결과), 마인크래프트가
+// 자체 제공 명령어에 붙이는 "A Mojang provided command." 설명은 정보가 없어 노이즈만 된다.
+const cleanConsoleLine = (line) =>
+  line.replace(/\x1b\[[0-9;]*m/g, "").replace(/:\s*A Mojang provided command\.\s*$/, "");
+
 const appendConsoleLine = (line) => {
+  const cleaned = cleanConsoleLine(line);
   const atBottom = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < 24;
-  consoleLog.textContent += (consoleLog.textContent ? "\n" : "") + line;
+  consoleLog.textContent += (consoleLog.textContent ? "\n" : "") + cleaned;
   if (atBottom) {
     consoleLog.scrollTop = consoleLog.scrollHeight;
   }
