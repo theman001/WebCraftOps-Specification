@@ -24,6 +24,8 @@ const commandSearchInput = document.getElementById("commandSearchInput");
 const commandResultLog = document.getElementById("commandResultLog");
 
 const consoleLog = document.getElementById("consoleLog");
+const renderLog = document.getElementById("renderLog");
+const consoleSubTabs = document.getElementById("consoleSubTabs");
 const consoleStatus = document.getElementById("consoleStatus");
 const consoleCommandForm = document.getElementById("consoleCommandForm");
 const consoleCommandInput = document.getElementById("consoleCommandInput");
@@ -299,18 +301,22 @@ const testConnection = async () => {
 const cleanConsoleLine = (line) =>
   line.replace(/\x1b\[[0-9;]*m/g, "").replace(/:\s*A Mojang provided command\.\s*$/, "");
 
-const appendConsoleLine = (line) => {
+// 지도 타일을 조금만 움직여도 [MapTile]/[MapEvents] 로그가 수백 줄씩 쏟아져서 실제 채팅/
+// 명령 결과가 그 안에 파묻힌다 — 렌더링 로그는 아예 다른 패널(렌더링 로그 탭)로 분리한다.
+const isRenderLogLine = (line) => line.includes("[MapTile]") || line.includes("[MapEvents]");
+
+const appendLine = (el, line) => {
   const cleaned = cleanConsoleLine(line);
-  const atBottom = consoleLog.scrollHeight - consoleLog.scrollTop - consoleLog.clientHeight < 24;
-  consoleLog.textContent += (consoleLog.textContent ? "\n" : "") + cleaned;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  el.textContent += (el.textContent ? "\n" : "") + cleaned;
   if (atBottom) {
-    consoleLog.scrollTop = consoleLog.scrollHeight;
+    el.scrollTop = el.scrollHeight;
   }
 };
 
 // 명령어 탭에서 "전송"으로 만든 명령의 실제 실행 결과(성공/에러 메시지)는 이 콘솔 스트림
 // 라인으로 나온다 — 새 연결을 또 만들지 않고 같은 스트림을 명령어 탭 로그에도 그대로
-// 흘려보낸다.
+// 흘려보낸다(렌더링 로그는 여기서도 무의미하니 같이 걸러낸다).
 // 콘솔 전체 트래픽을 그대로 미러링하다 보니 consoleLog와 달리 여기는 오래 열어두면
 // 계속 불어난다 — 최근 N줄만 남겨서 무한정 커지지 않게 한다.
 const COMMAND_RESULT_LOG_MAX_LINES = 500;
@@ -341,13 +347,18 @@ const connectConsoleStream = (bridgeUrl) => {
     consoleEventSource.close();
   }
   consoleLog.textContent = "";
+  renderLog.textContent = "";
   consoleStatus.textContent = "연결 중...";
   const es = new EventSource(`bridge/console/stream?bridgeUrl=${encodeURIComponent(bridgeUrl)}`);
   es.onopen = () => {
     consoleStatus.textContent = "연결됨";
   };
   es.onmessage = (event) => {
-    appendConsoleLine(event.data);
+    if (isRenderLogLine(event.data)) {
+      appendLine(renderLog, event.data);
+      return;
+    }
+    appendLine(consoleLog, event.data);
     appendCommandResultLine(event.data);
   };
   es.onerror = () => {
@@ -365,11 +376,11 @@ const sendConsoleCommand = async (bridgeUrl, command) => {
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      appendConsoleLine(`[오류] 명령어 실행 실패: ${payload.error ?? response.status}`);
+      appendLine(consoleLog, `[오류] 명령어 실행 실패: ${payload.error ?? response.status}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    appendConsoleLine(`[오류] 명령어 전송 실패: ${message}`);
+    appendLine(consoleLog, `[오류] 명령어 전송 실패: ${message}`);
   }
 };
 
@@ -384,8 +395,20 @@ consoleCommandForm.addEventListener("submit", (event) => {
   sendConsoleCommand(bridgeUrl, command);
   flashSent(consoleLog);
 });
+// 서버 로그 / 렌더링 로그 서브탭 — 명령어 탭과 같은 방식(둘 중 하나만 보임).
+let activeConsolePanel = consoleLog;
+consoleSubTabs.querySelectorAll(".subtab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    consoleSubTabs.querySelectorAll(".subtab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    const showRender = btn.dataset.consoleSubtab === "render";
+    consoleLog.hidden = showRender;
+    renderLog.hidden = !showRender;
+    activeConsolePanel = showRender ? renderLog : consoleLog;
+  });
+});
+
 consoleScrollBottomButton.addEventListener("click", () => {
-  consoleLog.scrollTop = consoleLog.scrollHeight;
+  activeConsolePanel.scrollTop = activeConsolePanel.scrollHeight;
 });
 mapFocusReleaseButton.addEventListener("click", () => mapInstance.clearLock());
 

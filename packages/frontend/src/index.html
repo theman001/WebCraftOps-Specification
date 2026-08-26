@@ -734,9 +734,15 @@
             <p class="hint">
               관리자(콘솔) 권한 실시간 로그 · 채팅도 함께 표시됩니다. 맨 아래에 있을 때만
               새 로그를 따라 자동 스크롤하며(위로 올려서 과거 로그를 볼 땐 안 끌려옴),
-              "맨 아래로" 버튼으로 언제든 바로 복귀할 수 있습니다.
+              "맨 아래로" 버튼으로 언제든 바로 복귀할 수 있습니다. 지도 타일 렌더링 로그는
+              양이 많아서 <strong>렌더링 로그</strong> 탭으로 따로 뺐습니다.
             </p>
+            <nav class="subtabs" id="consoleSubTabs">
+              <button type="button" class="subtab-btn active" data-console-subtab="main">서버 로그</button>
+              <button type="button" class="subtab-btn" data-console-subtab="render">렌더링 로그</button>
+            </nav>
             <pre class="console-log" id="consoleLog"></pre>
+            <pre class="console-log" id="renderLog" hidden></pre>
             <form class="console-command-row" id="consoleCommandForm">
               <input
                 id="consoleCommandInput"
