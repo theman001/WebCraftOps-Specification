@@ -1,7 +1,7 @@
 // "명령어" 탭에서 마우스로 조립할 수 있는 서버 명령어 카탈로그.
 // 실서버에 /help를 날려서 실제로 존재하는 명령어인지 확인한 목록 중, 운영자가 자주 쓰는
-// 것만 추려서 카테고리(플레이어/서버)로 나눴다 — 전체 vanilla/Paper 명령어를 다 넣으면
-// (수백 개) 오히려 찾기 어려워지므로 의도적으로 선별했다.
+// 것만 추려서 카테고리(플레이어/서버)로 나눴다(디버그/데이터팩 내부용 명령어 등은 제외) —
+// 다만 give의 아이템 목록만은 예외로 전체 아이템을 대상으로 한다(아래 ALL_ITEM_IDS 참고).
 //
 // arg.type:
 //  - "player": 온라인 플레이어만 고르면 되는 경우 — <select>(드롭다운, 타이핑 불필요)
@@ -10,6 +10,122 @@
 //  - "select": 정해진 값 중 하나 — <select>
 //  - "number": 숫자 입력
 //  - "text": 자유 텍스트(공지 문구 등 — 타이핑이 꼭 필요한 경우만 사용)
+
+// give 명령의 "모든 아이템" 대상 목록 — packages/frontend/src/assets/items/에 번들된
+// 파일명(=실제 Mojang 아이템 ID, 26.2 클라이언트 jar에서 추출)에서 뽑았다. 파일명이지만
+// 실제 /give 에 쓸 수 있는 아이템 ID가 아닌 것들은 하나씩 확인해서 뺐다 — 활/석궁 당기는
+// 애니메이션 프레임(bow_pulling_0~2), 창을 손에 든 상태(*_spear_in_hand), 가방 열린
+// 상태(*_bundle_open_front/back), 가죽 방어구·물약·불꽃놀이의 염색 오버레이 레이어
+// (*_overlay), 시계/나침반/이정표나침반/발광블록의 회전·발광 애니메이션 프레임
+// (clock_00~63 등) — 전부 텍스처 상태 변형이지 별개 아이템이 아니다. 대신 접미사 없는
+// 실제 ID(clock/compass/recovery_compass/crossbow/tipped_arrow)가 파일로 안 남아있는
+// 경우엔 직접 채워 넣었다. 라벨은 593개를 전부 정확히 한글로 옮기는 게 오히려 오역
+// 위험이 커서, 원본 Material 이름을 그대로 보여준다(네이티브 select라 타이핑하면 바로
+// 해당 글자로 스크롤됨).
+const ALL_ITEM_IDS = [
+  "acacia_boat", "acacia_chest_boat", "acacia_door", "acacia_hanging_sign", "acacia_sign", "allay_spawn_egg",
+  "amethyst_shard", "angler_pottery_sherd", "apple", "archer_pottery_sherd", "armadillo_scute", "armadillo_spawn_egg",
+  "armor_stand", "arms_up_pottery_sherd", "arrow", "axolotl_bucket", "axolotl_spawn_egg", "baked_potato",
+  "bamboo", "bamboo_chest_raft", "bamboo_door", "bamboo_hanging_sign", "bamboo_raft", "bamboo_sign",
+  "barrier", "bat_spawn_egg", "bee_spawn_egg", "beef", "beetroot", "beetroot_seeds",
+  "beetroot_soup", "bell", "birch_boat", "birch_chest_boat", "birch_door", "birch_hanging_sign",
+  "birch_sign", "black_bundle", "black_candle", "black_dye", "black_harness", "blade_pottery_sherd",
+  "blaze_powder", "blaze_rod", "blaze_spawn_egg", "blue_bundle", "blue_candle", "blue_dye",
+  "blue_egg", "blue_harness", "bogged_spawn_egg", "bolt_armor_trim_smithing_template", "bone", "bone_meal",
+  "book", "bordure_indented_banner_pattern", "bow", "bowl", "bread", "breeze_rod",
+  "breeze_spawn_egg", "brewer_pottery_sherd", "brewing_stand", "brick", "brown_bundle", "brown_candle",
+  "brown_dye", "brown_egg", "brown_harness", "brush", "bucket", "bundle",
+  "burn_pottery_sherd", "cake", "camel_husk_spawn_egg", "camel_spawn_egg", "campfire", "candle",
+  "carrot", "carrot_on_a_stick", "cat_spawn_egg", "cauldron", "cave_spider_spawn_egg", "chainmail_boots",
+  "chainmail_chestplate", "chainmail_helmet", "chainmail_leggings", "charcoal", "cherry_boat", "cherry_chest_boat",
+  "cherry_door", "cherry_hanging_sign", "cherry_sign", "chest_minecart", "chicken", "chicken_spawn_egg",
+  "chorus_fruit", "clay_ball", "clock", "coal", "coast_armor_trim_smithing_template", "cocoa_beans",
+  "cod", "cod_bucket", "cod_spawn_egg", "command_block_minecart", "comparator", "compass",
+  "cooked_beef", "cooked_chicken", "cooked_cod", "cooked_mutton", "cooked_porkchop", "cooked_rabbit",
+  "cooked_salmon", "cookie", "copper_axe", "copper_boots", "copper_chain", "copper_chestplate",
+  "copper_door", "copper_golem_spawn_egg", "copper_helmet", "copper_hoe", "copper_horse_armor", "copper_ingot",
+  "copper_lantern", "copper_leggings", "copper_nautilus_armor", "copper_nugget", "copper_pickaxe", "copper_shovel",
+  "copper_spear", "copper_sword", "cow_spawn_egg", "creaking_spawn_egg", "creeper_banner_pattern", "creeper_spawn_egg",
+  "crimson_door", "crimson_hanging_sign", "crimson_sign", "crossbow", "cyan_bundle", "cyan_candle",
+  "cyan_dye", "cyan_harness", "danger_pottery_sherd", "dark_oak_boat", "dark_oak_chest_boat", "dark_oak_door",
+  "dark_oak_hanging_sign", "dark_oak_sign", "diamond", "diamond_axe", "diamond_boots", "diamond_chestplate",
+  "diamond_helmet", "diamond_hoe", "diamond_horse_armor", "diamond_leggings", "diamond_nautilus_armor", "diamond_pickaxe",
+  "diamond_shovel", "diamond_spear", "diamond_sword", "disc_fragment_5", "dolphin_spawn_egg", "donkey_spawn_egg",
+  "dragon_breath", "dried_kelp", "drowned_spawn_egg", "dune_armor_trim_smithing_template", "echo_shard", "egg",
+  "elder_guardian_spawn_egg", "elytra", "emerald", "enchanted_book", "end_crystal", "ender_dragon_spawn_egg",
+  "ender_eye", "ender_pearl", "enderman_spawn_egg", "endermite_spawn_egg", "evoker_spawn_egg", "experience_bottle",
+  "explorer_pottery_sherd", "exposed_copper_chain", "exposed_copper_door", "exposed_copper_lantern", "eye_armor_trim_smithing_template", "feather",
+  "fermented_spider_eye", "field_masoned_banner_pattern", "filled_map", "fire_charge", "firefly_bush", "firework_rocket",
+  "firework_star", "fishing_rod", "flint", "flint_and_steel", "flow_armor_trim_smithing_template", "flow_banner_pattern",
+  "flow_pottery_sherd", "flower_banner_pattern", "flower_pot", "fox_spawn_egg", "friend_pottery_sherd", "frog_spawn_egg",
+  "furnace_minecart", "ghast_spawn_egg", "ghast_tear", "glass_bottle", "glistering_melon_slice", "globe_banner_pattern",
+  "glow_berries", "glow_ink_sac", "glow_item_frame", "glow_squid_spawn_egg", "glowstone_dust", "goat_horn",
+  "goat_spawn_egg", "gold_ingot", "gold_nugget", "golden_apple", "golden_axe", "golden_boots",
+  "golden_carrot", "golden_chestplate", "golden_helmet", "golden_hoe", "golden_horse_armor", "golden_leggings",
+  "golden_nautilus_armor", "golden_pickaxe", "golden_shovel", "golden_spear", "golden_sword", "gray_bundle",
+  "gray_candle", "gray_dye", "gray_harness", "green_bundle", "green_candle", "green_dye",
+  "green_harness", "guardian_spawn_egg", "gunpowder", "guster_banner_pattern", "guster_pottery_sherd", "happy_ghast_spawn_egg",
+  "heart_of_the_sea", "heart_pottery_sherd", "heartbreak_pottery_sherd", "hoglin_spawn_egg", "honey_bottle", "honeycomb",
+  "hopper", "hopper_minecart", "horse_spawn_egg", "host_armor_trim_smithing_template", "howl_pottery_sherd", "husk_spawn_egg",
+  "ink_sac", "iron_axe", "iron_boots", "iron_chain", "iron_chestplate", "iron_door",
+  "iron_golem_spawn_egg", "iron_helmet", "iron_hoe", "iron_horse_armor", "iron_ingot", "iron_leggings",
+  "iron_nautilus_armor", "iron_nugget", "iron_pickaxe", "iron_shovel", "iron_spear", "iron_sword",
+  "item_frame", "jungle_boat", "jungle_chest_boat", "jungle_door", "jungle_hanging_sign", "jungle_sign",
+  "kelp", "knowledge_book", "lantern", "lapis_lazuli", "lava_bucket", "lead",
+  "leaf_litter", "leather", "leather_boots", "leather_chestplate", "leather_helmet", "leather_horse_armor",
+  "leather_leggings", "light", "light_blue_bundle", "light_blue_candle", "light_blue_dye", "light_blue_harness",
+  "light_gray_bundle", "light_gray_candle", "light_gray_dye", "light_gray_harness", "lime_bundle", "lime_candle",
+  "lime_dye", "lime_harness", "lingering_potion", "llama_spawn_egg", "mace", "magenta_bundle",
+  "magenta_candle", "magenta_dye", "magenta_harness", "magma_cream", "magma_cube_spawn_egg", "mangrove_boat",
+  "mangrove_chest_boat", "mangrove_door", "mangrove_hanging_sign", "mangrove_propagule", "mangrove_sign", "map",
+  "melon_seeds", "melon_slice", "milk_bucket", "minecart", "miner_pottery_sherd", "mojang_banner_pattern",
+  "mooshroom_spawn_egg", "mourner_pottery_sherd", "mule_spawn_egg", "mushroom_stew", "music_disc_11", "music_disc_13",
+  "music_disc_5", "music_disc_blocks", "music_disc_bounce", "music_disc_cat", "music_disc_chirp", "music_disc_creator",
+  "music_disc_creator_music_box", "music_disc_far", "music_disc_lava_chicken", "music_disc_mall", "music_disc_mellohi", "music_disc_otherside",
+  "music_disc_pigstep", "music_disc_precipice", "music_disc_relic", "music_disc_stal", "music_disc_strad", "music_disc_tears",
+  "music_disc_wait", "music_disc_ward", "mutton", "name_tag", "nautilus_shell", "nautilus_spawn_egg",
+  "nether_brick", "nether_sprouts", "nether_star", "nether_wart", "netherite_axe", "netherite_boots",
+  "netherite_chestplate", "netherite_helmet", "netherite_hoe", "netherite_horse_armor", "netherite_ingot", "netherite_leggings",
+  "netherite_nautilus_armor", "netherite_pickaxe", "netherite_scrap", "netherite_shovel", "netherite_spear", "netherite_sword",
+  "netherite_upgrade_smithing_template", "oak_boat", "oak_chest_boat", "oak_door", "oak_hanging_sign", "oak_sign",
+  "ocelot_spawn_egg", "ominous_bottle", "ominous_trial_key", "orange_bundle", "orange_candle", "orange_dye",
+  "orange_harness", "oxidized_copper_chain", "oxidized_copper_door", "oxidized_copper_lantern", "painting", "pale_oak_boat",
+  "pale_oak_chest_boat", "pale_oak_door", "pale_oak_hanging_sign", "pale_oak_sign", "panda_spawn_egg", "paper",
+  "parched_spawn_egg", "parrot_spawn_egg", "phantom_membrane", "phantom_spawn_egg", "pig_spawn_egg", "piglin_banner_pattern",
+  "piglin_brute_spawn_egg", "piglin_spawn_egg", "pillager_spawn_egg", "pink_bundle", "pink_candle", "pink_dye",
+  "pink_harness", "pink_petals", "pitcher_plant", "pitcher_pod", "plenty_pottery_sherd", "pointed_dripstone",
+  "poisonous_potato", "polar_bear_spawn_egg", "popped_chorus_fruit", "porkchop", "potato", "potion",
+  "powder_snow_bucket", "prismarine_crystals", "prismarine_shard", "prize_pottery_sherd", "pufferfish", "pufferfish_bucket",
+  "pufferfish_spawn_egg", "pumpkin_pie", "pumpkin_seeds", "purple_bundle", "purple_candle", "purple_dye",
+  "purple_harness", "quartz", "rabbit", "rabbit_foot", "rabbit_hide", "rabbit_spawn_egg",
+  "rabbit_stew", "raiser_armor_trim_smithing_template", "ravager_spawn_egg", "raw_copper", "raw_gold", "raw_iron",
+  "recovery_compass", "red_bundle", "red_candle", "red_dye", "red_harness", "redstone",
+  "repeater", "resin_brick", "resin_clump", "rib_armor_trim_smithing_template", "rotten_flesh", "saddle",
+  "salmon", "salmon_bucket", "salmon_spawn_egg", "scrape_pottery_sherd", "sea_pickle", "seagrass",
+  "sentry_armor_trim_smithing_template", "shaper_armor_trim_smithing_template", "sheaf_pottery_sherd", "shears", "sheep_spawn_egg", "shelter_pottery_sherd",
+  "shulker_shell", "shulker_spawn_egg", "silence_armor_trim_smithing_template", "silverfish_spawn_egg", "skeleton_horse_spawn_egg", "skeleton_spawn_egg",
+  "skull_banner_pattern", "skull_pottery_sherd", "slime_ball", "slime_spawn_egg", "sniffer_egg", "sniffer_spawn_egg",
+  "snort_pottery_sherd", "snout_armor_trim_smithing_template", "snow_golem_spawn_egg", "snowball", "soul_campfire", "soul_lantern",
+  "spectral_arrow", "spider_eye", "spider_spawn_egg", "spire_armor_trim_smithing_template", "splash_potion", "spruce_boat",
+  "spruce_chest_boat", "spruce_door", "spruce_hanging_sign", "spruce_sign", "spyglass", "squid_spawn_egg",
+  "stick", "stone_axe", "stone_hoe", "stone_pickaxe", "stone_shovel", "stone_spear",
+  "stone_sword", "stray_spawn_egg", "strider_spawn_egg", "string", "structure_void", "sugar",
+  "sugar_cane", "sulfur_cube_bucket", "sulfur_cube_spawn_egg", "sulfur_spike", "suspicious_stew", "sweet_berries",
+  "tadpole_bucket", "tadpole_spawn_egg", "tide_armor_trim_smithing_template", "tipped_arrow", "tnt_minecart", "torchflower_seeds",
+  "totem_of_undying", "trader_llama_spawn_egg", "trial_key", "trident", "tropical_fish", "tropical_fish_bucket",
+  "tropical_fish_spawn_egg", "turtle_egg", "turtle_helmet", "turtle_scute", "turtle_spawn_egg", "vex_armor_trim_smithing_template",
+  "vex_spawn_egg", "villager_spawn_egg", "vindicator_spawn_egg", "wandering_trader_spawn_egg", "ward_armor_trim_smithing_template", "warden_spawn_egg",
+  "warped_door", "warped_fungus_on_a_stick", "warped_hanging_sign", "warped_sign", "water_bucket", "wayfinder_armor_trim_smithing_template",
+  "weathered_copper_chain", "weathered_copper_door", "weathered_copper_lantern", "wheat", "wheat_seeds", "white_bundle",
+  "white_candle", "white_dye", "white_harness", "wild_armor_trim_smithing_template", "wildflowers", "wind_charge",
+  "witch_spawn_egg", "wither_skeleton_spawn_egg", "wither_spawn_egg", "wolf_armor", "wolf_spawn_egg", "wooden_axe",
+  "wooden_hoe", "wooden_pickaxe", "wooden_shovel", "wooden_spear", "wooden_sword", "writable_book",
+  "written_book", "yellow_bundle", "yellow_candle", "yellow_dye", "yellow_harness", "zoglin_spawn_egg",
+  "zombie_horse_spawn_egg", "zombie_nautilus_spawn_egg", "zombie_spawn_egg", "zombie_villager_spawn_egg", "zombified_piglin_spawn_egg",
+];
+
+const titleCaseItemLabel = (id) => id.split("_").map((word) => word[0].toUpperCase() + word.slice(1)).join(" ");
+const GIVE_ITEM_OPTIONS = ALL_ITEM_IDS.map((id) => ({ value: id, label: titleCaseItemLabel(id) }));
 
 export const COMMAND_CATEGORIES = [
   { id: "player", label: "플레이어" },
@@ -96,28 +212,7 @@ export const COMMANDS = [
     syntax: "/give <대상> <아이템> <개수>",
     args: [
       { type: "player", key: "player", label: "대상 플레이어" },
-      {
-        type: "select",
-        key: "item",
-        label: "아이템",
-        options: [
-          { label: "다이아몬드", value: "diamond" },
-          { label: "철 주괴", value: "iron_ingot" },
-          { label: "금 주괴", value: "gold_ingot" },
-          { label: "에메랄드", value: "emerald" },
-          { label: "네더라이트 주괴", value: "netherite_ingot" },
-          { label: "다이아몬드 검", value: "diamond_sword" },
-          { label: "다이아몬드 곡괭이", value: "diamond_pickaxe" },
-          { label: "엔더 진주", value: "ender_pearl" },
-          { label: "불사의 토템", value: "totem_of_undying" },
-          { label: "겉날개", value: "elytra" },
-          { label: "빵", value: "bread" },
-          { label: "구운 소고기", value: "cooked_beef" },
-          { label: "황금 사과", value: "golden_apple" },
-          { label: "경험치 병", value: "experience_bottle" },
-          { label: "횃불", value: "torch" },
-        ],
-      },
+      { type: "select", key: "item", label: "아이템 (전체)", options: GIVE_ITEM_OPTIONS },
       { type: "number", key: "count", label: "개수", default: 1, min: 1, max: 64 },
     ],
     build: (v) => `give ${v.player} minecraft:${v.item} ${v.count}`,
@@ -189,6 +284,254 @@ export const COMMANDS = [
     syntax: "/pardon <대상>",
     args: [{ type: "playerText", key: "player", label: "대상 플레이어" }],
     build: (v) => `pardon ${v.player}`,
+  },
+  // 아래부터는 플레이어 "전체"가 아니라 개인 상태(경험치/인챈트/업적/레시피/타이틀/귓속말/
+  // 관전/태그)를 다루는 명령어 — 콘솔이 실행하므로 실행자 자신을 뜻하는 축약형(인자 생략)은
+  // 못 쓰고 항상 대상을 명시한다.
+  {
+    id: "experience",
+    category: "player",
+    label: "경험치 부여",
+    syntax: "/experience add <대상> <양> [points|levels]",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "number", key: "amount", label: "양", default: 10, min: 1, max: 100000 },
+      {
+        type: "select",
+        key: "unit",
+        label: "단위",
+        options: [
+          { label: "포인트", value: "points" },
+          { label: "레벨", value: "levels" },
+        ],
+      },
+    ],
+    build: (v) => `experience add ${v.player} ${v.amount} ${v.unit}`,
+  },
+  {
+    id: "enchant",
+    category: "player",
+    label: "아이템 인챈트",
+    syntax: "/enchant <대상> <인챈트> [레벨]",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어 (손에 든 아이템)" },
+      {
+        type: "select",
+        key: "enchantment",
+        label: "인챈트",
+        options: [
+          { label: "날카로움", value: "sharpness" },
+          { label: "보호", value: "protection" },
+          { label: "효율", value: "efficiency" },
+          { label: "내구성", value: "unbreaking" },
+          { label: "행운", value: "fortune" },
+          { label: "섬세한 손길", value: "silk_touch" },
+          { label: "무한", value: "infinity" },
+          { label: "약탈", value: "looting" },
+          { label: "수선", value: "mending" },
+          { label: "가시", value: "thorns" },
+          { label: "밀치기", value: "knockback" },
+          { label: "휩쓸기 공격", value: "sweeping_edge" },
+          { label: "충격 감소", value: "feather_falling" },
+          { label: "급속 상승", value: "riptide" },
+        ],
+      },
+      { type: "number", key: "level", label: "레벨", default: 1, min: 1, max: 10 },
+    ],
+    build: (v) => `enchant ${v.player} minecraft:${v.enchantment} ${v.level}`,
+  },
+  {
+    id: "advancement",
+    category: "player",
+    label: "업적 부여/회수",
+    syntax: "/advancement <grant|revoke> <대상> everything",
+    args: [
+      {
+        type: "select",
+        key: "action",
+        label: "작업",
+        options: [
+          { label: "부여", value: "grant" },
+          { label: "회수", value: "revoke" },
+        ],
+      },
+      { type: "player", key: "player", label: "대상 플레이어" },
+    ],
+    build: (v) => `advancement ${v.action} ${v.player} everything`,
+  },
+  {
+    id: "recipe",
+    category: "player",
+    label: "레시피 부여/회수",
+    syntax: "/recipe <give|take> <대상> *",
+    args: [
+      {
+        type: "select",
+        key: "action",
+        label: "작업",
+        options: [
+          { label: "부여", value: "give" },
+          { label: "회수", value: "take" },
+        ],
+      },
+      { type: "player", key: "player", label: "대상 플레이어" },
+    ],
+    build: (v) => `recipe ${v.action} ${v.player} *`,
+  },
+  {
+    id: "title",
+    category: "player",
+    label: "타이틀 메시지 표시",
+    syntax: '/title <대상> title "<텍스트>"',
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "text", key: "message", label: "표시할 문구", placeholder: "예: 이벤트 시작!" },
+    ],
+    // 큰따옴표로 감싼 문자열은 그 자체로 유효한 텍스트 컴포넌트(JSON)라 별도 이스케이프
+    // 라이브러리 없이도 안전하다 — 문구 안에 큰따옴표가 있으면만 이스케이프하면 됨.
+    build: (v) => `title ${v.player} title "${v.message.replace(/"/g, '\\"')}"`,
+  },
+  {
+    id: "playsound",
+    category: "player",
+    label: "효과음 재생",
+    syntax: "/playsound <소리> master <대상>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      {
+        type: "select",
+        key: "sound",
+        label: "소리",
+        options: [
+          { label: "레벨업", value: "entity.player.levelup" },
+          { label: "경험치 획득", value: "entity.experience_orb.pickup" },
+          { label: "종", value: "block.bell.use" },
+          { label: "천둥", value: "entity.lightning_bolt.thunder" },
+          { label: "폭발", value: "entity.generic.explode" },
+          { label: "고양이 울음", value: "entity.cat.ambient" },
+          { label: "엔더드래곤 포효", value: "entity.ender_dragon.growl" },
+          { label: "불꽃놀이", value: "entity.firework_rocket.launch" },
+        ],
+      },
+    ],
+    build: (v) => `playsound minecraft:${v.sound} master ${v.player}`,
+  },
+  {
+    id: "tell",
+    category: "player",
+    label: "귓속말 보내기",
+    syntax: "/tell <대상> <메시지>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "text", key: "message", label: "메시지", placeholder: "예: 잠깐 스폰으로 와줄래?" },
+    ],
+    build: (v) => `tell ${v.player} ${v.message}`,
+  },
+  {
+    id: "spectate",
+    category: "player",
+    label: "관전 시키기",
+    syntax: "/spectate <관전 대상> <관전자>",
+    args: [
+      { type: "player", key: "target", label: "관전할 대상" },
+      { type: "player", key: "spectator", label: "관전자로 만들 플레이어" },
+    ],
+    build: (v) => `spectate ${v.target} ${v.spectator}`,
+  },
+  {
+    id: "tag",
+    category: "player",
+    label: "태그 추가/제거",
+    syntax: "/tag <대상> <add|remove> <태그>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      {
+        type: "select",
+        key: "action",
+        label: "작업",
+        options: [
+          { label: "추가", value: "add" },
+          { label: "제거", value: "remove" },
+        ],
+      },
+      { type: "text", key: "tag", label: "태그 이름", placeholder: "예: vip" },
+    ],
+    build: (v) => `tag ${v.player} ${v.action} ${v.tag}`,
+  },
+  // scoreboard/team은 "목표/팀 자체를 만들고 관리"하는 부분(서버 전체 설정)과 "특정
+  // 플레이어를 거기 넣거나 점수를 매기는" 부분(개인 상태)으로 갈린다 — 후자만 여기, 전자는
+  // 서버 카테고리에 있다.
+  {
+    id: "scoreboard-player-set",
+    category: "player",
+    label: "점수 설정",
+    syntax: "/scoreboard players set <대상> <목표> <값>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "text", key: "objective", label: "목표(objective) 이름", placeholder: "예: kills" },
+      { type: "number", key: "value", label: "값", default: 0, min: 0, max: 1000000000 },
+    ],
+    build: (v) => `scoreboard players set ${v.player} ${v.objective} ${v.value}`,
+  },
+  {
+    id: "scoreboard-player-add",
+    category: "player",
+    label: "점수 증가",
+    syntax: "/scoreboard players add <대상> <목표> <값>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "text", key: "objective", label: "목표(objective) 이름", placeholder: "예: kills" },
+      { type: "number", key: "value", label: "증가량", default: 1, min: 1, max: 1000000000 },
+    ],
+    build: (v) => `scoreboard players add ${v.player} ${v.objective} ${v.value}`,
+  },
+  {
+    id: "scoreboard-player-remove",
+    category: "player",
+    label: "점수 감소",
+    syntax: "/scoreboard players remove <대상> <목표> <값>",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      { type: "text", key: "objective", label: "목표(objective) 이름", placeholder: "예: kills" },
+      { type: "number", key: "value", label: "감소량", default: 1, min: 1, max: 1000000000 },
+    ],
+    build: (v) => `scoreboard players remove ${v.player} ${v.objective} ${v.value}`,
+  },
+  {
+    id: "scoreboard-player-reset",
+    category: "player",
+    label: "점수 초기화",
+    syntax: "/scoreboard players reset <대상> [<목표>]",
+    args: [
+      { type: "player", key: "player", label: "대상 플레이어" },
+      {
+        type: "text",
+        key: "objective",
+        label: "목표(objective) 이름 (비우면 전체 초기화)",
+        placeholder: "예: kills",
+        optional: true,
+      },
+    ],
+    build: (v) => `scoreboard players reset ${v.player}${v.objective ? ` ${v.objective}` : ""}`,
+  },
+  {
+    id: "team-join",
+    category: "player",
+    label: "팀에 플레이어 추가",
+    syntax: "/team join <팀> <대상>",
+    args: [
+      { type: "text", key: "team", label: "팀 이름", placeholder: "예: red" },
+      { type: "player", key: "player", label: "대상 플레이어" },
+    ],
+    build: (v) => `team join ${v.team} ${v.player}`,
+  },
+  {
+    id: "team-leave",
+    category: "player",
+    label: "팀에서 플레이어 제거",
+    syntax: "/team leave <대상>",
+    args: [{ type: "player", key: "player", label: "대상 플레이어" }],
+    build: (v) => `team leave ${v.player}`,
   },
   {
     id: "say",
@@ -364,5 +707,229 @@ export const COMMANDS = [
     build: () => "stop",
     danger: true,
     confirmMessage: "서버를 종료할까요? 자동으로 다시 켜지는 설정이 아니면 직접 켜야 합니다.",
+  },
+  {
+    id: "worldborder-set",
+    category: "server",
+    label: "월드 경계 크기 설정",
+    syntax: "/worldborder set <크기>",
+    args: [{ type: "number", key: "size", label: "크기 (블록, 한 변 길이)", default: 60000000, min: 1, max: 60000000 }],
+    build: (v) => `worldborder set ${v.size}`,
+  },
+  // 보스바/스코어보드 목표/팀은 전부 "id(또는 이름)로 미리 만들어두고 그 id를 계속
+  // 참조하며 여러 하위 설정을 바꾸는" 구조라, 원자적인 단일 커맨드로 뭉칠 수가 없다 —
+  // vanilla 명령어 트리 그대로 하위 동작 하나당 카드 하나로 나눴다(만들기/삭제/개별 설정).
+  {
+    id: "bossbar-add",
+    category: "server",
+    label: "보스바 만들기",
+    syntax: '/bossbar add <id> "<이름>"',
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      { type: "text", key: "name", label: "표시 이름", placeholder: "예: 보스 레이드" },
+    ],
+    build: (v) => `bossbar add ${v.id} "${v.name.replace(/"/g, '\\"')}"`,
+  },
+  {
+    id: "bossbar-remove",
+    category: "server",
+    label: "보스바 삭제",
+    syntax: "/bossbar remove <id>",
+    args: [{ type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" }],
+    build: (v) => `bossbar remove ${v.id}`,
+    danger: true,
+  },
+  {
+    id: "bossbar-players",
+    category: "server",
+    label: "보스바 표시 대상 설정",
+    syntax: "/bossbar set <id> players <대상>",
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      { type: "player", key: "player", label: "표시할 플레이어" },
+    ],
+    build: (v) => `bossbar set ${v.id} players ${v.player}`,
+  },
+  {
+    id: "bossbar-hide",
+    category: "server",
+    label: "보스바 숨기기 (대상 전체 해제)",
+    syntax: "/bossbar set <id> players",
+    args: [{ type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" }],
+    build: (v) => `bossbar set ${v.id} players`,
+  },
+  {
+    id: "bossbar-value",
+    category: "server",
+    label: "보스바 진행률 설정",
+    syntax: "/bossbar set <id> value <값>",
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      { type: "number", key: "value", label: "현재 값", default: 0, min: 0, max: 1000000000 },
+    ],
+    build: (v) => `bossbar set ${v.id} value ${v.value}`,
+  },
+  {
+    id: "bossbar-max",
+    category: "server",
+    label: "보스바 최대값 설정",
+    syntax: "/bossbar set <id> max <값>",
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      { type: "number", key: "value", label: "최대값", default: 100, min: 1, max: 1000000000 },
+    ],
+    build: (v) => `bossbar set ${v.id} max ${v.value}`,
+  },
+  {
+    id: "bossbar-color",
+    category: "server",
+    label: "보스바 색상 설정",
+    syntax: "/bossbar set <id> color <색상>",
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      {
+        type: "select",
+        key: "color",
+        label: "색상",
+        options: [
+          { label: "분홍", value: "pink" },
+          { label: "파랑", value: "blue" },
+          { label: "빨강", value: "red" },
+          { label: "초록", value: "green" },
+          { label: "노랑", value: "yellow" },
+          { label: "보라", value: "purple" },
+          { label: "흰색", value: "white" },
+        ],
+      },
+    ],
+    build: (v) => `bossbar set ${v.id} color ${v.color}`,
+  },
+  {
+    id: "bossbar-visible",
+    category: "server",
+    label: "보스바 표시/숨김 전환",
+    syntax: "/bossbar set <id> visible <값>",
+    args: [
+      { type: "text", key: "id", label: "보스바 id", placeholder: "예: myevent" },
+      {
+        type: "select",
+        key: "visible",
+        label: "설정",
+        options: [
+          { label: "표시", value: "true" },
+          { label: "숨김", value: "false" },
+        ],
+      },
+    ],
+    build: (v) => `bossbar set ${v.id} visible ${v.visible}`,
+  },
+  {
+    id: "bossbar-list",
+    category: "server",
+    label: "보스바 목록 보기",
+    syntax: "/bossbar list",
+    args: [],
+    build: () => "bossbar list",
+  },
+  {
+    id: "scoreboard-objective-add",
+    category: "server",
+    label: "점수 목표(objective) 만들기",
+    syntax: '/scoreboard objectives add <이름> <기준> "<표시이름>"',
+    args: [
+      { type: "text", key: "name", label: "목표 이름", placeholder: "예: kills" },
+      {
+        type: "select",
+        key: "criteria",
+        label: "기준(criteria)",
+        options: [
+          { label: "수동 점수 (dummy)", value: "dummy" },
+          { label: "체력", value: "health" },
+          { label: "경험치(포인트)", value: "xp" },
+          { label: "레벨", value: "level" },
+          { label: "사망 횟수", value: "deathCount" },
+          { label: "플레이어 처치 수", value: "playerKillCount" },
+          { label: "전체 처치 수", value: "totalKillCount" },
+        ],
+      },
+      { type: "text", key: "displayName", label: "표시 이름 (선택)", placeholder: "예: 킬 수", optional: true },
+    ],
+    build: (v) =>
+      `scoreboard objectives add ${v.name} ${v.criteria}` +
+      (v.displayName ? ` "${v.displayName.replace(/"/g, '\\"')}"` : ""),
+  },
+  {
+    id: "scoreboard-objective-remove",
+    category: "server",
+    label: "점수 목표(objective) 삭제",
+    syntax: "/scoreboard objectives remove <이름>",
+    args: [{ type: "text", key: "name", label: "목표 이름", placeholder: "예: kills" }],
+    build: (v) => `scoreboard objectives remove ${v.name}`,
+    danger: true,
+  },
+  {
+    id: "scoreboard-objective-setdisplay",
+    category: "server",
+    label: "점수 목표 표시 위치 설정",
+    syntax: "/scoreboard objectives setdisplay <위치> [<이름>]",
+    args: [
+      {
+        type: "select",
+        key: "slot",
+        label: "표시 위치",
+        options: [
+          { label: "사이드바", value: "sidebar" },
+          { label: "플레이어 목록(탭)", value: "list" },
+          { label: "이름 아래", value: "belowName" },
+        ],
+      },
+      { type: "text", key: "name", label: "목표 이름 (비우면 해제)", placeholder: "예: kills", optional: true },
+    ],
+    build: (v) => `scoreboard objectives setdisplay ${v.slot}${v.name ? ` ${v.name}` : ""}`,
+  },
+  {
+    id: "team-add",
+    category: "server",
+    label: "팀 만들기",
+    syntax: '/team add <이름> "<표시이름>"',
+    args: [
+      { type: "text", key: "name", label: "팀 이름", placeholder: "예: red" },
+      { type: "text", key: "displayName", label: "표시 이름 (선택)", placeholder: "예: 빨강팀", optional: true },
+    ],
+    build: (v) => `team add ${v.name}` + (v.displayName ? ` "${v.displayName.replace(/"/g, '\\"')}"` : ""),
+  },
+  {
+    id: "team-remove",
+    category: "server",
+    label: "팀 삭제",
+    syntax: "/team remove <이름>",
+    args: [{ type: "text", key: "name", label: "팀 이름", placeholder: "예: red" }],
+    build: (v) => `team remove ${v.name}`,
+    danger: true,
+  },
+  {
+    id: "team-color",
+    category: "server",
+    label: "팀 색상 설정",
+    syntax: "/team modify <이름> color <색상>",
+    args: [
+      { type: "text", key: "name", label: "팀 이름", placeholder: "예: red" },
+      {
+        type: "select",
+        key: "color",
+        label: "색상",
+        options: [
+          { label: "검정", value: "black" }, { label: "남색", value: "dark_blue" },
+          { label: "진초록", value: "dark_green" }, { label: "청록", value: "dark_aqua" },
+          { label: "진빨강", value: "dark_red" }, { label: "보라", value: "dark_purple" },
+          { label: "금색", value: "gold" }, { label: "회색", value: "gray" },
+          { label: "진회색", value: "dark_gray" }, { label: "파랑", value: "blue" },
+          { label: "초록", value: "green" }, { label: "하늘색", value: "aqua" },
+          { label: "빨강", value: "red" }, { label: "분홍", value: "light_purple" },
+          { label: "노랑", value: "yellow" }, { label: "흰색", value: "white" },
+        ],
+      },
+    ],
+    build: (v) => `team modify ${v.name} color ${v.color}`,
   },
 ];
