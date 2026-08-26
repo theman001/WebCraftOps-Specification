@@ -14,6 +14,9 @@ const showPlayersToggle = document.getElementById("showPlayers");
 const showMobsToggle = document.getElementById("showMobs");
 const showItemsToggle = document.getElementById("showItems");
 const mapPlayerList = document.getElementById("mapPlayerList");
+const mapFocusRow = document.getElementById("mapFocusRow");
+const mapFocusStatus = document.getElementById("mapFocusStatus");
+const mapFocusReleaseButton = document.getElementById("mapFocusReleaseButton");
 
 const blueprintFileInput = document.getElementById("blueprintFile");
 const blueprintNameInput = document.getElementById("blueprintName");
@@ -58,21 +61,56 @@ const historyStack = [];
 const redoStack = [];
 let auditCursor = null;
 let consoleEventSource = null;
+// uuid별로 li를 유지해서, 매 스냅샷(300ms)마다 얼굴 아이콘을 다시 요청하지 않게 한다
+// (엔티티 목록은 위치가 바뀔 때마다 통째로 갱신되지만, 얼굴 이미지는 유저가 들어오고
+// 나갈 때만 새로 받아오면 충분함).
+const mapPlayerListItems = new Map(); // uuid -> li
 const renderMapPlayerList = (players) => {
-  mapPlayerList.innerHTML = "";
   if (players.length === 0) {
+    mapPlayerListItems.clear();
     mapPlayerList.innerHTML = '<li class="empty-note" style="cursor: default">접속한 유저가 없습니다.</li>';
     return;
   }
+  if (mapPlayerList.querySelector(".empty-note")) {
+    mapPlayerList.innerHTML = "";
+  }
+  const bridgeUrl = bridgeInput.value.trim();
+  const seenUuids = new Set();
   players.forEach((player) => {
+    seenUuids.add(player.uuid);
+    if (mapPlayerListItems.has(player.uuid)) return;
     const li = document.createElement("li");
-    li.textContent = player.name;
-    li.addEventListener("click", () => mapInstance.focusOn(player.x, player.z));
+    const icon = document.createElement("img");
+    icon.className = "player-face-icon";
+    icon.alt = "";
+    icon.src = `bridge/players/${player.uuid}/head?bridgeUrl=${encodeURIComponent(bridgeUrl)}`;
+    li.appendChild(icon);
+    li.appendChild(document.createTextNode(player.name));
+    li.addEventListener("click", () => mapInstance.lockOnto("players", player.uuid, player.name));
     mapPlayerList.appendChild(li);
+    mapPlayerListItems.set(player.uuid, li);
   });
+  for (const [uuid, li] of mapPlayerListItems) {
+    if (!seenUuids.has(uuid)) {
+      li.remove();
+      mapPlayerListItems.delete(uuid);
+    }
+  }
 };
 
-const mapInstance = createMap({ canvas: mapCanvas, statusEl: mapStatus, onPlayersUpdate: renderMapPlayerList });
+// 지도 위 마커/유저 목록을 클릭해 "고정"하면(단순 1회 이동이 아니라 대상이 움직이는 동안
+// 계속 화면 중앙에 붙어 따라감) 여기서 상태 표시 + 해제 버튼을 보여준다.
+const renderMapFocusStatus = (name) => {
+  mapFocusRow.style.display = name ? "flex" : "none";
+  mapFocusStatus.textContent = name ? `고정 중: ${name}` : "";
+};
+
+const mapInstance = createMap({
+  canvas: mapCanvas,
+  statusEl: mapStatus,
+  onPlayersUpdate: renderMapPlayerList,
+  onFocusChange: renderMapFocusStatus,
+});
 
 const STATUS_LABEL = {
   queued: "대기",
@@ -774,6 +812,7 @@ consoleCommandForm.addEventListener("submit", (event) => {
 consoleScrollBottomButton.addEventListener("click", () => {
   consoleLog.scrollTop = consoleLog.scrollHeight;
 });
+mapFocusReleaseButton.addEventListener("click", () => mapInstance.clearLock());
 
 // ---- 이벤트 바인딩 ----
 

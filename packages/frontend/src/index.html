@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebCraftOps</title>
+    <link rel="icon" type="image/png" href="assets/items/diamond.png" />
     <style>
       :root {
         --bg: #0f172a;
@@ -225,6 +226,15 @@
         border-color: var(--accent);
       }
 
+      .player-face-icon {
+        width: 16px;
+        height: 16px;
+        image-rendering: pixelated;
+        vertical-align: -3px;
+        margin-right: 0.4rem;
+        border-radius: 2px;
+      }
+
       .map-canvas {
         width: 100%;
         height: 520px;
@@ -425,9 +435,11 @@
             <h2>실시간 지도</h2>
             <p class="hint">
               지도 드래그: 이동 · 휠: 확대/축소.<br />
-              지도 위의 유저·몹·아이템 <strong>아이콘(마커)을 클릭</strong>하면 드래그 없이도
-              그 위치로 화면 중심이 바로 이동합니다(아래 유저 목록 클릭도 동일). 블록이
-              바뀌면 지도가 자동으로 갱신됩니다.
+              지도 위의 유저·몹·아이템 <strong>아이콘(마커)을 클릭</strong>하면(아래 유저
+              목록 클릭도 동일) 그 대상을 화면 정중앙에 <strong>고정</strong>합니다 — 한 번
+              이동하고 끝나는 게 아니라, 대상이 움직이는 동안 계속 따라가며 지도가
+              움직입니다. 지도를 드래그하면 고정이 풀립니다. 블록이 바뀌면 지도가 자동으로
+              갱신됩니다.
             </p>
             <div class="entity-toggles">
               <label><input type="checkbox" id="showPlayers" checked /> 유저</label>
@@ -435,6 +447,10 @@
               <label><input type="checkbox" id="showItems" checked /> 아이템</label>
             </div>
             <p class="status-text" id="mapStatus">연결하면 자동으로 불러옵니다.</p>
+            <div class="btn-row" id="mapFocusRow" style="display: none; margin-top: 0">
+              <span class="status-text" id="mapFocusStatus"></span>
+              <button type="button" id="mapFocusReleaseButton" class="btn btn-sm">고정 해제</button>
+            </div>
             <canvas id="mapCanvas" class="map-canvas"></canvas>
             <div class="btn-row" style="margin-top: var(--space-3); margin-bottom: 0">
               <strong style="font-size: 0.85rem; color: var(--text-muted)">온라인 유저</strong>

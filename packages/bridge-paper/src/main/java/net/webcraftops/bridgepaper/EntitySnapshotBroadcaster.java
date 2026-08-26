@@ -88,14 +88,18 @@ public final class EntitySnapshotBroadcaster {
                     .append("}");
             } else if (entity instanceof Item item) {
                 appendComma(items);
-                items.append("{\"material\":\"").append(item.getItemStack().getType().name())
+                // id: 프런트가 "이 특정 아이템"을 스냅샷 사이에서 계속 같은 대상으로 추적하는
+                // 데 쓴다(포커스 고정 — 좌표만으로는 같은 종류의 다른 개체와 구분이 안 됨).
+                items.append("{\"id\":\"").append(item.getUniqueId())
+                    .append("\",\"material\":\"").append(item.getItemStack().getType().name())
                     .append("\",\"x\":").append(item.getLocation().getX())
                     .append(",\"z\":").append(item.getLocation().getZ())
                     .append("}");
             } else if (entity instanceof LivingEntity living) {
                 appendComma(mobs);
                 String customName = living.getCustomName();
-                mobs.append("{\"type\":\"").append(living.getType().name())
+                mobs.append("{\"id\":\"").append(living.getUniqueId())
+                    .append("\",\"type\":\"").append(living.getType().name())
                     .append("\",\"x\":").append(living.getLocation().getX())
                     .append(",\"z\":").append(living.getLocation().getZ())
                     .append(",\"name\":").append(customName != null ? "\"" + Json.escape(customName) + "\"" : "null")

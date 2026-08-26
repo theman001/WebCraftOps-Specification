@@ -18,7 +18,7 @@ const MAX_SCALE = 16;
 const MARKER_SIZE = 16; // 화면 픽셀 고정 크기(줌과 무관 — 마커가 안 사라지거나 안 커지게)
 const CLICK_DRAG_THRESHOLD = 4; // 이 이하로 움직이면 드래그가 아니라 클릭으로 취급
 
-export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
+export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) => {
   const ctx = canvas.getContext("2d");
 
   let currentBridgeUrl = null;
@@ -39,7 +39,12 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
   const mobIconCache = new Map(); // type -> HTMLImageElement
   const itemIconCache = new Map(); // material -> HTMLImageElement
   const playerIconCache = new Map(); // uuid -> HTMLImageElement
-  let markerHitTargets = []; // draw()마다 갱신 — 클릭 히트테스트용 {x,y,wx,wz}
+  let markerHitTargets = []; // draw()마다 갱신 — 클릭/호버 히트테스트용 {x,y,radius,wx,wz,category,id,name}
+  let hoverPoint = null; // 캔버스 기준 커서 좌표 {sx,sy} | null(캔버스 밖)
+  // "포커스"는 한 번 중앙으로 이동하고 끝나는 게 아니라, 그 엔티티가 움직이는 대로 지도
+  // 중심을 계속 그 엔티티에 고정하는 개념이다 — 매 스냅샷마다 좌표를 다시 읽어와 origin을
+  // 갱신한다. 실제로 지도를 드래그하면(다른 곳을 보고 싶다는 뜻이므로) 자동 해제한다.
+  let lockedTarget = null; // { category, id, name } | null
 
   const key = (cx, cz) => `${cx},${cz}`;
 
@@ -86,7 +91,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     return img;
   };
 
-  const drawMarker = (img, wx, wz, label) => {
+  const drawMarker = (img, wx, wz, label, hit) => {
     const { x, y } = worldToScreen(wx, wz);
     const half = MARKER_SIZE / 2;
     if (img && img.complete && img.naturalWidth > 0) {
@@ -97,30 +102,87 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
       ctx.arc(x, y, half * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
+    const isLocked = lockedTarget && lockedTarget.category === hit.category && lockedTarget.id === hit.id;
+    if (isLocked) {
+      ctx.strokeStyle = "#facc15";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, half + 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     if (label) {
       ctx.fillStyle = "#e2e8f0";
       ctx.font = "10px sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(label, x, y - half - 3);
     }
-    markerHitTargets.push({ x, y, radius: half, wx, wz });
+    markerHitTargets.push({ x, y, radius: half, wx, wz, ...hit });
+  };
+
+  const hitTestMarker = (sx, sy) => {
+    for (const target of markerHitTargets) {
+      const dx = sx - target.x;
+      const dy = sy - target.y;
+      if (dx * dx + dy * dy <= target.radius * target.radius) {
+        return target;
+      }
+    }
+    return null;
+  };
+
+  const drawTooltip = (target) => {
+    ctx.font = "11px sans-serif";
+    const paddingX = 6;
+    const textWidth = ctx.measureText(target.name).width;
+    const boxWidth = textWidth + paddingX * 2;
+    const boxHeight = 18;
+    const boxX = target.x - boxWidth / 2;
+    const boxY = target.y - MARKER_SIZE / 2 - 3 - boxHeight;
+    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#f1f5f9";
+    ctx.textAlign = "center";
+    ctx.fillText(target.name, target.x, boxY + boxHeight - 5);
   };
 
   const drawEntities = () => {
     markerHitTargets = [];
     if (entityVisibility.items) {
       for (const item of latestEntities.items) {
-        drawMarker(itemIconFor(item.material), item.x, item.z, null);
+        drawMarker(itemIconFor(item.material), item.x, item.z, null, {
+          category: "items",
+          id: item.id,
+          name: item.material,
+        });
       }
     }
     if (entityVisibility.mobs) {
       for (const mob of latestEntities.mobs) {
-        drawMarker(mobIconFor(mob.type), mob.x, mob.z, mob.name);
+        drawMarker(mobIconFor(mob.type), mob.x, mob.z, mob.name, {
+          category: "mobs",
+          id: mob.id,
+          name: mob.name ?? mob.type,
+        });
       }
     }
     if (entityVisibility.players) {
       for (const player of latestEntities.players) {
-        drawMarker(playerIconFor(player.uuid), player.x, player.z, player.name);
+        drawMarker(playerIconFor(player.uuid), player.x, player.z, player.name, {
+          category: "players",
+          id: player.uuid,
+          name: player.name,
+        });
+      }
+    }
+    if (hoverPoint) {
+      const hovered = hitTestMarker(hoverPoint.sx, hoverPoint.sy);
+      if (hovered) {
+        drawTooltip(hovered);
       }
     }
   };
@@ -247,7 +309,13 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     if (!dragging) return;
     const dx = event.clientX - dragStart.x;
     const dy = event.clientY - dragStart.y;
+    const wasBelowThreshold = dragMoved < CLICK_DRAG_THRESHOLD;
     dragMoved = Math.max(dragMoved, Math.abs(dx), Math.abs(dy));
+    // 진짜 드래그로 넘어가는 순간(=다른 곳을 보고 싶다는 뜻) 포커스 잠금을 푼다. 클릭
+    // 수준의 미세한 흔들림까지 풀면 안 되니 임계값을 넘을 때 딱 한 번만 처리한다.
+    if (wasBelowThreshold && dragMoved >= CLICK_DRAG_THRESHOLD) {
+      clearLock();
+    }
     originX = dragStart.originX - dx / scale;
     originZ = dragStart.originZ - dy / scale;
     draw();
@@ -262,21 +330,28 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     }
   });
 
-  // 실제로 드래그하지 않은(제자리) 클릭만 엔티티 포커스로 취급 — 지도를 드래그하다가
+  // 실제로 드래그하지 않은(제자리) 클릭만 마커 포커스로 취급 — 지도를 드래그하다가
   // 마커 위에서 손을 뗐다고 갑자기 화면이 튀면 안 된다.
   const handleClick = (event) => {
     const rect = canvas.getBoundingClientRect();
-    const sx = event.clientX - rect.left;
-    const sy = event.clientY - rect.top;
-    for (const target of markerHitTargets) {
-      const dx = sx - target.x;
-      const dy = sy - target.y;
-      if (dx * dx + dy * dy <= target.radius * target.radius) {
-        focusOn(target.wx, target.wz);
-        return;
-      }
+    const target = hitTestMarker(event.clientX - rect.left, event.clientY - rect.top);
+    if (target) {
+      lockOnto(target.category, target.id, target.name);
     }
   };
+
+  // 마커에 커서를 올리면 이름 툴팁을 보여준다(아이템/이름 없는 몹처럼 지도에 상시
+  // 라벨이 없는 엔티티도 확인할 수 있게). 드래그 중엔 dragMove 핸들러가 이미 매번
+  // draw()를 호출하므로 여기서 또 부를 필요 없음.
+  canvas.addEventListener("mousemove", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    hoverPoint = { sx: event.clientX - rect.left, sy: event.clientY - rect.top };
+    if (!dragging) draw();
+  });
+  canvas.addEventListener("mouseleave", () => {
+    hoverPoint = null;
+    draw();
+  });
 
   canvas.addEventListener(
     "wheel",
@@ -338,6 +413,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
           mobs: parsed.mobs ?? [],
           items: parsed.items ?? [],
         };
+        applyLock(); // 잠긴 엔티티가 있으면 이번 스냅샷의 새 좌표로 지도 중심을 다시 맞춘다.
         draw();
         onPlayersUpdate?.(latestEntities.players);
       } catch (error) {
@@ -353,9 +429,46 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     draw();
   };
 
-  const focusOn = (wx, wz) => {
+  const findEntity = (category, id) => {
+    const list = latestEntities[category];
+    if (!list) return null;
+    return list.find((entity) => (category === "players" ? entity.uuid : entity.id) === id) ?? null;
+  };
+
+  // 엔티티 좌표로 지도 중심을 옮긴다(잠금 상태의 "이번 순간 위치 반영"과, 최초 클릭 시의
+  // "일단 그 위치로 이동" 둘 다 여기로 통일).
+  const centerOn = (wx, wz) => {
     originX = wx;
     originZ = wz;
+  };
+
+  const applyLock = () => {
+    if (!lockedTarget) return;
+    const entity = findEntity(lockedTarget.category, lockedTarget.id);
+    if (!entity) {
+      // 디스폰/로그아웃 등으로 더 이상 존재하지 않음 — 잠금을 풀어준다.
+      clearLock();
+      return;
+    }
+    centerOn(entity.x, entity.z);
+  };
+
+  const clearLock = () => {
+    if (!lockedTarget) return;
+    lockedTarget = null;
+    onFocusChange?.(null);
+    draw();
+  };
+
+  // 마커/유저 목록 클릭 시 호출 — 한 번 중앙으로 이동하고 끝나는 게 아니라, 이후 스냅샷마다
+  // applyLock()이 계속 그 엔티티의 최신 좌표를 따라간다(지도를 드래그하면 자동 해제).
+  const lockOnto = (category, id, name) => {
+    lockedTarget = { category, id, name };
+    onFocusChange?.(name);
+    const entity = findEntity(category, id);
+    if (entity) {
+      centerOn(entity.x, entity.z);
+    }
     draw();
     scheduleSync();
   };
@@ -364,6 +477,8 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     currentBridgeUrl = bridgeUrl;
     tiles.clear();
     playerIconCache.clear();
+    lockedTarget = null;
+    onFocusChange?.(null);
     statusEl.textContent = "지도 불러오는 중...";
     resize();
     syncTiles();
@@ -371,5 +486,5 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
     connectEntities(bridgeUrl);
   };
 
-  return { start, focusOn, setEntityVisibility };
+  return { start, lockOnto, clearLock, setEntityVisibility };
 };

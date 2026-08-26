@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -28,11 +29,46 @@ public final class Textures {
     private static final BufferedImage MISSING = createMissingTexture();
 
     // 텍스처 파일명이 Material 이름과 아예 다른 블록들 — 자동 규칙(_top / 그대로)으로는
-    // 못 찾는 대표적인 케이스만 수동 등록. 나머지(슬래브/계단/울타리 등 파생 블록)는 아직
-    // 커버 안 됨 — 지도에서 회색 체커로 보이면 여기 추가할 것.
+    // 못 찾는 대표적인 케이스만 수동 등록.
     private static final Map<String, String> OVERRIDES = Map.of(
         "water", "water_still",
-        "lava", "lava_still"
+        "lava", "lava_still",
+        "snow_block", "snow",
+        "magma_block", "magma",
+        "dried_kelp_block", "dried_kelp_top",
+        "smooth_quartz", "quartz_block_top",
+        "smooth_sandstone", "sandstone_top",
+        "smooth_red_sandstone", "red_sandstone_top",
+        "sticky_piston", "piston_top_sticky"
+    );
+
+    // 파생 블록(슬래브/계단/벽/펜스/버튼/문 등)은 실제로 "부모 블록"과 같은 텍스처를 6면에
+    // 그대로 쓴다 — 접미사를 떼고 부모 이름 후보 몇 개(그대로/복수형/“_block”/“_planks”/
+    // “_log”)를 순서대로 시도한다. (실측: 1193개 레지스트리 블록 기준 텍스처 매칭 55.6%
+    // → 88.6%로 개선됨 — packages/bridge-paper/README.md 참고)
+    private static final List<String> STRIP_SUFFIXES = List.of(
+        "_mosaic_slab", "_mosaic_stairs", "_wall_hanging_sign", "_wall_sign", "_hanging_sign",
+        "_sign", "_fence_gate", "_fence", "_pressure_plate", "_trapdoor", "_button", "_slab",
+        "_stairs", "_wall", "_door", "_wood"
+    );
+    private static final List<String> BASE_VARIANT_SUFFIXES = List.of("", "s", "_block", "_planks", "_log");
+
+    // 원본과 텍스처가 사실상 동일한 접두사 변형(밀랍 코팅 구리, 감염 블록).
+    private static final List<String> STRIP_PREFIXES = List.of("waxed_", "infested_");
+
+    // 배너/침대/카펫처럼 텍스처를 재사용할 부모가 없는 염료색 블록은 대표색 단색 스와치로
+    // 대체한다(실제 Mojang 울/염료 팔레트 색상값).
+    private static final List<String> COLOR_NAMES = List.of(
+        "light_blue", "light_gray", "white", "orange", "magenta", "yellow", "lime", "pink",
+        "gray", "cyan", "purple", "blue", "brown", "green", "red", "black"
+    );
+    private static final Map<String, Integer> COLOR_RGB = Map.ofEntries(
+        Map.entry("white", 0xF9FFFE), Map.entry("orange", 0xF9801D), Map.entry("magenta", 0xC74EBD),
+        Map.entry("light_blue", 0x3AB3DA), Map.entry("yellow", 0xFED83D), Map.entry("lime", 0x80C71F),
+        Map.entry("pink", 0xF38BAA), Map.entry("gray", 0x474F52), Map.entry("light_gray", 0x9D9D97),
+        Map.entry("cyan", 0x169C9C), Map.entry("purple", 0x8932B8), Map.entry("blue", 0x3C44AA),
+        Map.entry("brown", 0x835432), Map.entry("green", 0x5E7C16), Map.entry("red", 0xB02E26),
+        Map.entry("black", 0x1D1D21)
     );
 
     private static final Set<String> GRASS_TINT = Set.of(
@@ -72,6 +108,57 @@ public final class Textures {
 
     private static BufferedImage load(Material material) {
         String name = material.name().toLowerCase(Locale.ROOT);
+        BufferedImage resolved = resolve(name);
+        if (resolved != null) {
+            return resolved;
+        }
+        if (MISSING_WARNED.add(name)) {
+            LOGGER.warning("[Textures] " + name + " 텍스처를 못 찾아 회색 체커로 대체합니다.");
+        }
+        return MISSING;
+    }
+
+    // override → 파생 블록(슬래브 등) 분해 → 접두사(waxed_/infested_) 벗기고 재시도 →
+    // 염료색 단색 스와치 순서로 시도한다. 진짜로 못 찾으면 null(호출부가 MISSING으로
+    // 바꾸고 경고를 남긴다 — 재귀 중간 단계에서는 경고를 안 남기려고 여기선 null 그대로 둠).
+    private static BufferedImage resolve(String name) {
+        BufferedImage raw = readWithOverride(name);
+        if (raw != null) {
+            return applyTint(name, normalize(raw));
+        }
+
+        for (String suffix : STRIP_SUFFIXES) {
+            if (name.endsWith(suffix) && name.length() > suffix.length()) {
+                String base = name.substring(0, name.length() - suffix.length());
+                for (String variant : BASE_VARIANT_SUFFIXES) {
+                    BufferedImage candidate = readWithOverride(base + variant);
+                    if (candidate != null) {
+                        // 파생 블록(슬래브 등)엔 원본 블록과 별개의 바이옴 틴트 대상이 없다.
+                        return normalize(candidate);
+                    }
+                }
+            }
+        }
+
+        for (String prefix : STRIP_PREFIXES) {
+            if (name.startsWith(prefix)) {
+                BufferedImage stripped = resolve(name.substring(prefix.length()));
+                if (stripped != null) {
+                    return stripped;
+                }
+            }
+        }
+
+        for (String color : COLOR_NAMES) {
+            if (name.startsWith(color + "_")) {
+                return solidColor(0xFF000000 | COLOR_RGB.get(color));
+            }
+        }
+
+        return null;
+    }
+
+    private static BufferedImage readWithOverride(String name) {
         String override = OVERRIDES.get(name);
         BufferedImage raw = override != null ? readTexture(override) : null;
         if (raw == null) {
@@ -80,15 +167,10 @@ public final class Textures {
         if (raw == null) {
             raw = readTexture(name);
         }
-        if (raw == null) {
-            if (MISSING_WARNED.add(name)) {
-                LOGGER.warning("[Textures] " + name + " 텍스처를 못 찾아 회색 체커로 대체합니다 "
-                    + "(시도한 파일명: " + name + "_top.png, " + name + ".png"
-                    + (override != null ? ", " + override + ".png" : "") + ")");
-            }
-            return MISSING;
-        }
-        BufferedImage normalized = normalize(raw);
+        return raw;
+    }
+
+    private static BufferedImage applyTint(String name, BufferedImage normalized) {
         if (GRASS_TINT.contains(name) || FOLIAGE_TINT.contains(name)) {
             return tint(normalized, GRASS_COLOR);
         }
@@ -96,6 +178,16 @@ public final class Textures {
             return tint(normalized, WATER_COLOR);
         }
         return normalized;
+    }
+
+    private static BufferedImage solidColor(int argb) {
+        BufferedImage img = new BufferedImage(TEXTURE_SIZE, TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < TEXTURE_SIZE; y++) {
+            for (int x = 0; x < TEXTURE_SIZE; x++) {
+                img.setRGB(x, y, argb);
+            }
+        }
+        return img;
     }
 
     private static BufferedImage readTexture(String fileName) {

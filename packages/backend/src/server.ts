@@ -89,6 +89,8 @@ const STATIC_MIME_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".md": "text/markdown; charset=utf-8",
 };
 
 const serveStaticFile = (res: http.ServerResponse, pathname: string): boolean => {
