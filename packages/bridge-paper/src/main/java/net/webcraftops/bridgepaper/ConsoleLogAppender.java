@@ -12,14 +12,14 @@ import org.apache.logging.log4j.core.layout.PatternLayout;
 // Log4j2 Appender를 루트 로거에 직접 등록해 모든 로그 이벤트(명령어 결과, 채팅, 플러그인
 // 로그 전부 포함 — Bukkit의 java.util.logging도 결국 Log4j로 라우팅된다)를 받는다.
 public final class ConsoleLogAppender extends AbstractAppender {
-    private final ConsoleBroadcaster broadcaster;
+    private final SseBroadcaster broadcaster;
 
-    private ConsoleLogAppender(ConsoleBroadcaster broadcaster, Layout<String> layout) {
+    private ConsoleLogAppender(SseBroadcaster broadcaster, Layout<String> layout) {
         super("WebCraftOpsConsoleAppender", null, layout, false, Property.EMPTY_ARRAY);
         this.broadcaster = broadcaster;
     }
 
-    public static ConsoleLogAppender create(ConsoleBroadcaster broadcaster) {
+    public static ConsoleLogAppender create(SseBroadcaster broadcaster) {
         PatternLayout layout = PatternLayout.newBuilder()
             .withPattern("[%d{HH:mm:ss}] [%t/%level]: %msg")
             .build();

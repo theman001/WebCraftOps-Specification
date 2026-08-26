@@ -5,14 +5,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-// System.out/System.err을 감싸 완성된 한 줄이 나올 때마다 ConsoleBroadcaster로 전달하면서,
+// System.out/System.err을 감싸 완성된 한 줄이 나올 때마다 SseBroadcaster로 전달하면서,
 // 원래 스트림(콘솔/파일 로그)에도 그대로 흘려보낸다.
 public final class TeeOutputStream extends OutputStream {
     private final OutputStream original;
-    private final ConsoleBroadcaster broadcaster;
+    private final SseBroadcaster broadcaster;
     private final ByteArrayOutputStream lineBuffer = new ByteArrayOutputStream();
 
-    public TeeOutputStream(OutputStream original, ConsoleBroadcaster broadcaster) {
+    public TeeOutputStream(OutputStream original, SseBroadcaster broadcaster) {
         this.original = original;
         this.broadcaster = broadcaster;
     }

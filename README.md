@@ -29,7 +29,7 @@ WebCraftOps는 웹 기반 Minecraft Ops 콘솔, 3D 월드 에디터, 블루프�
 │   ├── bridge-core/          # Fabric 설계(TypeScript, 참고용 — 실서버는 bridge-paper 사용)
 │   ├── bridge-mock/          # Bridge 모의 서버 (로컬 테스트용)
 │   ├── bridge-paper/         # 실제 Paper 서버용 Bridge 플러그인 (Java/Gradle)
-│   ├── frontend/             # 웹 프런트엔드 (연결/빌드/블루프린트/작업&로그/콘솔 탭)
+│   ├── frontend/             # 웹 프런트엔드 (연결/지도/블루프린트/작업&로그/콘솔 탭)
 │   └── shared/                # 공통 타입
 └── README.md
 ```

@@ -9,24 +9,38 @@
 - `GET /bridge/info`
 - `GET /bridge/registry/blocks` (Material 기반 best-effort — Fabric 스타일 상태 프로퍼티
   추출은 하지 않음)
-- `GET /bridge/world/{worldId}/chunks?cx=&cz=` (varint + RLE, `bridge-core/fabric-bridge.ts`
-  및 `frontend/chunk-worker.js`와 동일한 유선 포맷)
 - `POST /bridge/command` — `setBlock`/`fill`만 구현. `replace`/`pasteBlueprint`/`clone`,
   `setBlock`의 `mode:"revert"`는 명시적으로 501을 반환합니다(조용한 가짜 성공 금지).
-- `GET /bridge/console/stream` — SSE. `System.out`/`System.err`를 감싼 `TeeOutputStream`이
-  한 줄씩 `ConsoleBroadcaster`로 넘기고, 그걸 구독자에게 그대로 push한다(Paper가 채팅도
-  콘솔에 로깅하므로 별도 채팅 리스너 없이 같이 나온다). 최근 500줄은 백로그로 남겨뒀다가
-  새 구독자 연결 시 재생한다.
+- `GET /bridge/console/stream` — SSE. `System.out`/`System.err`를 감싼 `TeeOutputStream` +
+  Log4j `ConsoleLogAppender`(실제 명령어 결과/채팅은 System.out을 안 거치고 터미널에 직접
+  써서 후자가 필수)가 한 줄씩 `SseBroadcaster`로 넘기고, 그걸 구독자에게 그대로 push한다.
+  최근 500줄은 백로그로 남겨뒀다가 새 구독자 연결 시 재생한다.
 - `POST /bridge/console/command` — `Bukkit.dispatchCommand(Bukkit.getConsoleSender(), ...)`로
   콘솔 권한 명령어 실행. 결과는 별도 응답 페이로드가 아니라 콘솔 로그(=SSE 스트림)로 나온다.
+- `GET /bridge/world/{worldId}/map/tile?cx=&cz=` — 청크(16x16 블록)를 실제 Mojang 블록
+  텍스처로 합성한 128x128 PNG 타일(`MapTileRenderer`/`Textures`, 텍스처는
+  `resources/textures/`에 번들). 청크당 결과를 캐싱하고 블록 변경 시에만 무효화한다
+  (구 원시 청크 바이너리 프로토콜은 삭제 — 프런트가 이제 이 PNG를 그대로 그린다).
+- `GET /bridge/world/{worldId}/map/events` — SSE. 블록 배치/파괴(`MapChangeListener`)마다
+  해당 청크 `{"cx":..,"cz":..}`를 push해서 프런트가 그 타일만 다시 받게 한다.
+- `GET /bridge/world/{worldId}/entities/stream` — SSE. `EntitySnapshotBroadcaster`가
+  300ms마다(구독자가 있을 때만) 온라인 플레이어/몹/떨어진 아이템의 좌표를 JSON으로
+  push한다.
+- `GET /bridge/players/{uuid}/head` — Mojang 세션 서버에서 스킨을 직접 받아 얼굴(8x8 +
+  모자 레이어)만 잘라 서빙(`PlayerHeadHandler`, 서드파티 아바타 서비스 의존 없음, 10분
+  캐시). Bukkit API를 안 건드리므로 메인 스레드 불필요.
 
 Edit Job의 생성/큐잉/스로틀링/취소는 백엔드(`packages/backend/src/edit-jobs.ts`)가
 전담합니다 — 이 플러그인은 `/bridge/command`로 들어오는 커맨드 하나를 동기 실행하고
 정확한 성공/실패만 돌려주면 됩니다.
 
-> `console/stream`·`console/command`는 코드만 작성된 상태로, 아직 Gradle 빌드·실서버
-> 배포로 검증하지 않았습니다(재빌드/재배포는 요청 시에만 진행). 배포 후에는 위
-> "빌드 확인 완료" 항목들과 동일하게 실제 SSE 연결 + 명령어 실행을 검증해야 합니다.
+> 콘솔/지도/엔티티/플레이어 얼굴 엔드포인트는 코드만 작성된 상태로, 아직 Gradle 빌드
+> 이상(실서버 배포)으로는 검증하지 않았습니다(재빌드는 전 단계 작업이 끝난 뒤 한 번에,
+> 재배포는 요청 시에만 진행). 문제가 생기면 콘솔에서 아래 태그로 어느 단계인지 좁혀갈 것:
+> "[BridgePaperPlugin]"(초기화) → "[Textures]"(텍스처 번들/매칭) → "[WorldRoute]"(라우팅)
+> → "[MapTile]"/"[MapTileHandler]"(타일 렌더링) → "[MapEvents]"(블록 변경 이벤트) →
+> "[EntitySnapshot]"(엔티티 스냅샷) → "[PlayerHead]"(플레이어 얼굴). 전 단계 검증 끝나면
+> 이 디버그 로그들은 전부 제거할 예정.
 
 ## 인증
 
@@ -90,7 +104,7 @@ docker run --rm \
 ```bash
 curl -H "X-Bridge-Token: $TOKEN" http://<host>:8123/bridge/info
 curl -H "X-Bridge-Token: $TOKEN" http://<host>:8123/bridge/registry/blocks | head -c 500
-curl -H "X-Bridge-Token: $TOKEN" http://<host>:8123/bridge/world/overworld/chunks -o /tmp/chunk.bin
+curl -H "X-Bridge-Token: $TOKEN" "http://<host>:8123/bridge/world/overworld/map/tile?cx=0&cz=0" -o /tmp/tile.png
 curl -X POST -H "X-Bridge-Token: $TOKEN" -H "Content-Type: application/json" \
   -d '{"type":"setBlock","params":{"block":"minecraft:gold_block","pos":[0,64,0]},"mode":"apply"}' \
   http://<host>:8123/bridge/command

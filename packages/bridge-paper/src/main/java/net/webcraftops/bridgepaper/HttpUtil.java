@@ -57,4 +57,28 @@ public final class HttpUtil {
     private static String decode(String s) {
         return java.net.URLDecoder.decode(s, StandardCharsets.UTF_8);
     }
+
+    // 기대 경로 형태: /bridge/world/{worldId}/... — "world" 세그먼트 바로 다음 값을 뽑는다.
+    // 여러 핸들러(청크였던 시절부터 지도 타일, 엔티티 스트림까지)가 공통으로 쓰는 파싱이라
+    // 한 곳에 모아둔다.
+    public static String resolveWorldId(String path) {
+        String[] parts = path.split("/");
+        for (int i = 0; i < parts.length; i++) {
+            if ("world".equals(parts[i]) && i + 1 < parts.length) {
+                return parts[i + 1];
+            }
+        }
+        return null;
+    }
+
+    // 백엔드/mock 서버 관례상 "overworld"라는 리터럴을 쓰지만 실제 Bukkit 월드 이름이
+    // 아니므로, 기본(첫 번째) 월드의 별칭으로 취급한다.
+    public static org.bukkit.World resolveWorld(String worldId) {
+        if (worldId == null) {
+            return null;
+        }
+        return "overworld".equals(worldId)
+            ? org.bukkit.Bukkit.getWorlds().get(0)
+            : org.bukkit.Bukkit.getWorld(worldId);
+    }
 }

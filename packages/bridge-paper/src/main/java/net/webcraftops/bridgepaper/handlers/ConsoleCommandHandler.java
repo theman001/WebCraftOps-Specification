@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.Map;
 
 // 콘솔(관리자) 권한으로 명령어를 실행한다. 실행 로그/에러는 서버가 알아서 콘솔에 찍고,
-// 그게 ConsoleBroadcaster를 통해 SSE로 나가므로 여기서는 별도 결과 페이로드가 필요 없다.
+// 그게 SseBroadcaster를 통해 SSE로 나가므로 여기서는 별도 결과 페이로드가 필요 없다.
 public final class ConsoleCommandHandler implements HttpHandler {
     private final MainThreadExecutor executor;
 

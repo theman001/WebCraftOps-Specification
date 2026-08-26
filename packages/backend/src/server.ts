@@ -177,6 +177,80 @@ const proxyBridgeRequest = async (bridgeUrl: string, path: string): Promise<Brid
   }
 };
 
+// SSE 프록시 3곳(콘솔 로그/지도 타일 이벤트/엔티티 스트림)이 전부 같은 모양이라 공용화한다.
+// 브라우저 EventSource는 커스텀 헤더를 못 보내므로 프런트는 항상 이 프록시로만 붙고,
+// 브릿지로 나가는 요청에만 토큰을 싣는다.
+const proxySse = async (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  bridgeUrl: string,
+  upstreamPath: string,
+) => {
+  const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+  const controller = new AbortController();
+  try {
+    const upstream = await fetch(`${normalizedUrl}${upstreamPath}`, {
+      headers: bridgeHeaders(),
+      signal: controller.signal,
+    });
+    if (!upstream.ok || !upstream.body) {
+      sendJson(res, 502, { message: "브릿지 SSE 스트림 연결에 실패했습니다." });
+      return;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    });
+    const upstreamStream = Readable.fromWeb(upstream.body as any);
+    // req의 "close"만 믿으면 클라이언트가 갑자기 끊겼을 때(브라우저 탭 종료, 네트워크
+    // 단절 등) 안 잡히는 경우가 있어 res 쪽도 같이 감시해서 어느 쪽이 먼저 닫히든 정리한다.
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      controller.abort();
+      upstreamStream.destroy();
+    };
+    req.on("close", cleanup);
+    res.on("close", cleanup);
+    upstreamStream.on("error", () => {
+      if (!res.writableEnded) res.end();
+    });
+    upstreamStream.pipe(res);
+  } catch (error) {
+    if (!res.headersSent) {
+      const message = error instanceof Error ? error.message : "알 수 없는 오류";
+      sendJson(res, 502, { ok: false, error: message });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
+};
+
+// 이미지 프록시 2곳(지도 타일/플레이어 얼굴)이 공유하는 단발성(스트리밍 아님) 바이너리 fetch.
+const proxyImage = async (
+  res: http.ServerResponse,
+  bridgeUrl: string,
+  upstreamPath: string,
+  contentType: string,
+) => {
+  try {
+    const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
+    const response = await fetch(`${normalizedUrl}${upstreamPath}`, { headers: bridgeHeaders() });
+    const buffer = await response.arrayBuffer();
+    res.writeHead(response.ok ? 200 : 502, {
+      "Content-Type": contentType,
+      "Content-Length": buffer.byteLength,
+      "Cache-Control": "no-store",
+    });
+    res.end(Buffer.from(buffer));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    sendJson(res, 502, { ok: false, status: 0, error: message });
+  }
+};
+
 const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse) => {
   // 프런트엔드가 백엔드와 다른 오리진(포트)에서 서빙되므로 CORS 허용이 없으면
   // 브라우저에서 아무 요청도 성공하지 못한다.
@@ -477,38 +551,6 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/chunks") {
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (!bridgeUrl) {
-      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
-      return;
-    }
-    try {
-      const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-      // cx/cz를 그대로 브릿지로 전달 — 없으면 bridge-paper가 기본값 0,0으로 처리한다.
-      const cx = url.searchParams.get("cx");
-      const cz = url.searchParams.get("cz");
-      const chunkQuery = new URLSearchParams();
-      if (cx !== null) chunkQuery.set("cx", cx);
-      if (cz !== null) chunkQuery.set("cz", cz);
-      const queryString = chunkQuery.toString();
-      const response = await fetch(
-        `${normalizedUrl}/bridge/world/overworld/chunks${queryString ? `?${queryString}` : ""}`,
-        { headers: bridgeHeaders() },
-      );
-      const buffer = await response.arrayBuffer();
-      res.writeHead(response.ok ? 200 : 502, {
-        "Content-Type": "application/octet-stream",
-        "Content-Length": buffer.byteLength,
-      });
-      res.end(Buffer.from(buffer));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "알 수 없는 오류";
-      sendJson(res, 502, { ok: false, status: 0, error: message });
-    }
-    return;
-  }
-
   // 브라우저 EventSource는 커스텀 헤더(X-Bridge-Token)를 못 보낸다 — 프런트는 항상
   // 같은 오리진인 이 프록시로만 연결하고, 여기서 브릿지로 넘어갈 때만 토큰을 싣는다.
   if (req.method === "GET" && pathname === "/bridge/console/stream") {
@@ -517,47 +559,59 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
       return;
     }
-    const normalizedUrl = bridgeUrl.endsWith("/") ? bridgeUrl.slice(0, -1) : bridgeUrl;
-    const controller = new AbortController();
-    try {
-      const upstream = await fetch(`${normalizedUrl}/bridge/console/stream`, {
-        headers: bridgeHeaders(),
-        signal: controller.signal,
-      });
-      if (!upstream.ok || !upstream.body) {
-        sendJson(res, 502, { message: "브릿지 콘솔 스트림 연결에 실패했습니다." });
-        return;
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-store",
-        Connection: "keep-alive",
-      });
-      const upstreamStream = Readable.fromWeb(upstream.body as any);
-      // req의 "close"만 믿으면 클라이언트가 갑자기 끊겼을 때(브라우저 탭 종료, 네트워크
-      // 단절 등) 안 잡히는 경우가 있어 브릿지로 가는 커넥션이 계속 열린 채로 새는 걸
-      // 실측으로 확인했다 — res 쪽도 같이 감시해서 어느 쪽이 먼저 닫히든 정리한다.
-      let cleaned = false;
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
-        controller.abort();
-        upstreamStream.destroy();
-      };
-      req.on("close", cleanup);
-      res.on("close", cleanup);
-      upstreamStream.on("error", () => {
-        if (!res.writableEnded) res.end();
-      });
-      upstreamStream.pipe(res);
-    } catch (error) {
-      if (!res.headersSent) {
-        const message = error instanceof Error ? error.message : "알 수 없는 오류";
-        sendJson(res, 502, { ok: false, error: message });
-      } else if (!res.writableEnded) {
-        res.end();
-      }
+    await proxySse(req, res, bridgeUrl, "/bridge/console/stream");
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/map/events") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
     }
+    await proxySse(req, res, bridgeUrl, "/bridge/world/overworld/map/events");
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/map/tile") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const cx = url.searchParams.get("cx");
+    const cz = url.searchParams.get("cz");
+    const tileQuery = new URLSearchParams();
+    if (cx !== null) tileQuery.set("cx", cx);
+    if (cz !== null) tileQuery.set("cz", cz);
+    const queryString = tileQuery.toString();
+    await proxyImage(
+      res,
+      bridgeUrl,
+      `/bridge/world/overworld/map/tile${queryString ? `?${queryString}` : ""}`,
+      "image/png",
+    );
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/entities/stream") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    await proxySse(req, res, bridgeUrl, "/bridge/world/overworld/entities/stream");
+    return;
+  }
+
+  if (req.method === "GET" && pathname.startsWith("/bridge/players/") && pathname.endsWith("/head")) {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const uuid = pathname.replace("/bridge/players/", "").replace("/head", "");
+    await proxyImage(res, bridgeUrl, `/bridge/players/${uuid}/head`, "image/png");
     return;
   }
 
