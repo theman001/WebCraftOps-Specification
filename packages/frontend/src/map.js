@@ -136,14 +136,14 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - half, y - half, MARKER_SIZE, MARKER_SIZE);
     } else {
-      ctx.fillStyle = "#38bdf8";
+      ctx.fillStyle = "#6bc72e"; // --xp — UI 개편으로 새 팔레트에 맞춤(기존 청록 악센트 폐기)
       ctx.beginPath();
       ctx.arc(x, y, half * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
     const isLocked = lockedTarget && lockedTarget.category === hit.category && lockedTarget.id === hit.id;
     if (isLocked) {
-      ctx.strokeStyle = "#facc15";
+      ctx.strokeStyle = "#e0b64a"; // --gold
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(x, y, half + 2, 0, Math.PI * 2);
@@ -233,7 +233,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     const rect = canvas.getBoundingClientRect();
     ctx.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
     ctx.imageSmoothingEnabled = false; // 마인크래프트 픽셀 텍스처가 흐려지지 않게.
-    ctx.fillStyle = "#0b1220";
+    ctx.fillStyle = "#131315"; // --stone-950 — UI 개편으로 페이지 배경과 맞춤(브릿지의 UNEXPLORED_COLOR도 동일하게 맞춰야 함)
     ctx.fillRect(0, 0, rect.width, rect.height);
     for (const [tileKey, tile] of tiles) {
       if (tile.status !== "ready") continue;

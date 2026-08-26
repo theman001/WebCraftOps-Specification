@@ -5,6 +5,7 @@ const bridgeInput = document.getElementById("bridgeUrl");
 const testButton = document.getElementById("testButton");
 const result = document.getElementById("result");
 const recentList = document.getElementById("recentList");
+const connectionDot = document.getElementById("connectionDot");
 
 const tabButtons = Array.from(document.querySelectorAll(".tab-btn"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
@@ -254,6 +255,8 @@ const testConnection = async () => {
 
     if (response.ok) {
       updateResult(`연결됨: ${payload.name ?? "서버"}${payload.mcVersion ? ` · ${payload.mcVersion}` : ""}`);
+      connectionDot.classList.add("online");
+      connectionDot.title = `연결됨 · ${payload.name ?? "서버"}`;
       const recents = loadRecents();
       const next = [
         { name: payload.name ?? "서버", bridgeUrl: normalized },
@@ -276,10 +279,14 @@ const testConnection = async () => {
       connectConsoleStream(normalized);
     } else {
       updateResult(`연결 실패 (${response.status})`);
+      connectionDot.classList.remove("online");
+      connectionDot.title = "연결 안 됨";
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     updateResult(`연결 실패: ${message}`);
+    connectionDot.classList.remove("online");
+    connectionDot.title = "연결 안 됨";
   } finally {
     testButton.disabled = false;
   }
@@ -315,6 +322,15 @@ const appendCommandResultLine = (line) => {
   }
   commandResultLog.textContent = commandResultLines.join("\n");
   commandResultLog.scrollTop = commandResultLog.scrollHeight;
+};
+
+// 명령어를 실제로 보낸 순간 결과 로그 테두리를 잠깐 반짝여서, 로그 텍스트를 눈으로
+// 훑지 않아도 "보냈다"는 걸 바로 알 수 있게 한다. 연달아 눌러도 매번 다시 반짝이도록
+// 클래스를 지웠다 강제로 리플로우시킨 뒤 다시 붙인다.
+const flashSent = (el) => {
+  el.classList.remove("flash-sent");
+  void el.offsetWidth;
+  el.classList.add("flash-sent");
 };
 
 // 브라우저 EventSource는 커스텀 헤더를 못 보내므로 항상 백엔드(같은 오리진)로만
@@ -366,6 +382,7 @@ consoleCommandForm.addEventListener("submit", (event) => {
   }
   consoleCommandInput.value = "";
   sendConsoleCommand(bridgeUrl, command);
+  flashSent(consoleLog);
 });
 consoleScrollBottomButton.addEventListener("click", () => {
   consoleLog.scrollTop = consoleLog.scrollHeight;
@@ -486,6 +503,7 @@ const buildCommandCard = (command) => {
     const builtCommand = command.build(values);
     appendCommandResultLine(`> ${builtCommand}`);
     sendConsoleCommand(bridgeUrl, builtCommand);
+    flashSent(commandResultLog);
   });
   actions.appendChild(sendButton);
   card.appendChild(actions);

@@ -31,7 +31,7 @@ public final class MapTileRenderer {
     private static final int PIXELS_PER_BLOCK = 8;
     private static final int TILE_SIZE = CHUNK_SIZE * PIXELS_PER_BLOCK; // 128
     private static final Logger LOGGER = Logger.getLogger("BridgePaper");
-    private static final int UNEXPLORED_COLOR = 0xFF0B1220; // 프런트 배경색과 맞춤
+    private static final int UNEXPLORED_COLOR = 0xFF131315; // 프런트 배경색(--stone-950)과 맞춤 — UI 개편으로 갱신
 
     private final Map<String, byte[]> cache = new ConcurrentHashMap<>();
 

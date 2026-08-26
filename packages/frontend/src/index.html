@@ -5,37 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebCraftOps</title>
     <link rel="icon" type="image/png" href="assets/items/diamond.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /*
+        재질: 실제 딥슬레이트 블록 텍스처(assets/ui/deepslate.png)를 상단 바 경계선에
+        타일링해서 쓴다 — 마인크래프트 자체 UI 언어(베벨 패널, 인벤토리 슬롯)를 색만
+        흉내내지 않고 진짜 게임 텍스처를 재료로 가져다 썼다.
+      */
       :root {
-        --bg: #0f172a;
-        --surface: #111827;
-        --surface-alt: #0b1220;
-        --border: #1e293b;
-        --border-strong: #334155;
-        --text: #e2e8f0;
-        --text-muted: #94a3b8;
-        --text-faint: #64748b;
-        --accent: #38bdf8;
-        --accent-contrast: #0f172a;
-        --danger: #f87171;
-        --success: #34d399;
-        --warning: #facc15;
-        --radius-sm: 6px;
-        --radius: 10px;
-        --radius-lg: 14px;
+        color-scheme: dark;
+
+        --stone-950: #131315;
+        --stone-900: #1a1a1c;
+        --stone-800: #201f22;
+        --stone-700: #2c2b2f;
+        --stone-600: #3a383d;
+        --bevel-hi: #4c4a50;
+        --bevel-lo: #070708;
+        --text: #e8e6e1;
+        --text-muted: #a8a4a0;
+        --text-faint: #706c68;
+
+        --xp: #6bc72e;
+        --xp-dim: #3f7a1c;
+        --xp-contrast: #0d1a05;
+        --redstone: #d9463b;
+        --redstone-dim: #7a231d;
+        --gold: #e0b64a;
+
+        --font-display: "Pixelify Sans", "Noto Sans KR", sans-serif;
+        --font-kr: "Noto Sans KR", sans-serif;
+        --font-mono: "JetBrains Mono", "Noto Sans KR", ui-monospace, monospace;
+
         --space-2: 0.5rem;
         --space-3: 0.75rem;
         --space-4: 1rem;
         --space-6: 1.5rem;
+
+        --motion-fast: 100ms;
+        --motion: 160ms;
+        --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
       }
 
       * {
         box-sizing: border-box;
       }
 
+      ::selection {
+        background: var(--xp-dim);
+        color: var(--text);
+      }
+
+      /* 커스텀 스크롤바 — 브라우저 기본 밝은 스크롤바가 어두운 UI 위에서 그대로 남아있던
+         버그를 없앤다. Firefox는 scrollbar-color, 그 외엔 웹킷 슈도엘리먼트로. */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--stone-600) var(--stone-900);
+      }
+      *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      *::-webkit-scrollbar-track {
+        background: var(--stone-900);
+      }
+      *::-webkit-scrollbar-thumb {
+        background: var(--stone-600);
+        border: 2px solid var(--stone-900);
+        border-radius: 5px;
+      }
+      *::-webkit-scrollbar-thumb:hover {
+        background: var(--bevel-hi);
+      }
+
+      html {
+        background: var(--stone-950);
+      }
+
       body {
-        font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-        background: var(--bg);
+        /* JetBrains Mono는 한글 자모 폭이 라틴 문자처럼 고르지 않아서 본문에 쓰면
+           글자 사이가 들쭉날쭉해 보인다 — 본문은 Noto Sans KR, 모노는 콘솔/입력창
+           등 실제로 폭 고정이 의미 있는 곳에만 명시적으로 쓴다. */
+        font-family: var(--font-kr);
+        background: var(--stone-950);
         color: var(--text);
         margin: 0;
       }
@@ -43,50 +100,105 @@
       .shell {
         max-width: 960px;
         margin: 0 auto;
-        padding: var(--space-6);
+        padding: 0 var(--space-6) var(--space-6);
       }
 
+      /* ---- 상단 바: 딥슬레이트 텍스처 경계선이 서명 요소 ---- */
+
       .topbar {
+        position: relative;
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: var(--space-4);
-        margin-bottom: var(--space-6);
+        padding: var(--space-4) 0 calc(var(--space-3) + 4px);
+        margin-bottom: var(--space-4);
+      }
+
+      /* border-image은 16x16짜리 원본을 얇은 3px 테두리로 슬라이스하려니 브라우저가
+         조용히 렌더링을 포기했다(투명 처리) — 대신 별도 스트립을 깔아서 확실하게 그린다. */
+      .topbar::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4px;
+        background-image: url("assets/ui/deepslate.png");
+        background-repeat: repeat-x;
+        background-size: 16px 16px;
+        image-rendering: pixelated;
       }
 
       .topbar h1 {
-        font-size: 1.4rem;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 1.5rem;
+        letter-spacing: 0.02em;
         margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
       }
+
+      .topbar h1 .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--text-faint);
+        flex-shrink: 0;
+        box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.4);
+      }
+
+      .topbar h1 .status-dot.online {
+        background: var(--xp);
+        animation: pulse 2s var(--ease) infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(107, 199, 46, 0.5);
+        }
+        50% {
+          box-shadow: 0 0 0 4px rgba(107, 199, 46, 0);
+        }
+      }
+
+      /* ---- 탭 ---- */
 
       .tabs {
         display: flex;
-        gap: var(--space-2);
-        background: var(--surface-alt);
-        padding: 4px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
+        gap: 3px;
+        background: var(--stone-950);
+        padding: 3px;
       }
 
       .tab-btn {
+        font-family: var(--font-display);
         border: none;
-        background: transparent;
+        background: var(--stone-800);
         color: var(--text-muted);
-        padding: 0.5rem 0.9rem;
-        border-radius: var(--radius-sm);
-        font-weight: 600;
-        font-size: 0.85rem;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        font-size: 0.9rem;
         cursor: pointer;
+        transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+      }
+
+      .tab-btn:hover:not(:disabled):not(.active) {
+        background: var(--stone-700);
+        color: var(--text);
       }
 
       .tab-btn.active {
-        background: var(--accent);
-        color: var(--accent-contrast);
+        background: var(--xp);
+        color: var(--xp-contrast);
       }
 
       .tab-btn:disabled {
-        opacity: 0.4;
+        opacity: 0.35;
         cursor: not-allowed;
       }
 
@@ -97,102 +209,215 @@
       }
 
       .subtab-btn {
-        border: 1px solid var(--border-strong);
-        background: var(--surface);
+        font-family: var(--font-display);
+        border: 2px solid var(--stone-950);
+        background: var(--stone-800);
         color: var(--text-muted);
-        padding: 0.45rem 1rem;
-        border-radius: 999px;
-        font-weight: 600;
+        padding: 0.4rem 1rem;
+        font-weight: 500;
         font-size: 0.85rem;
         cursor: pointer;
+        transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease),
+          border-color var(--motion-fast) var(--ease);
+      }
+
+      .subtab-btn:hover:not(.active) {
+        color: var(--text);
+        border-color: var(--stone-600);
       }
 
       .subtab-btn.active {
-        background: var(--accent);
-        color: var(--accent-contrast);
-        border-color: var(--accent);
+        background: var(--xp-dim);
+        color: var(--text);
+        border-color: var(--xp);
       }
 
       .tab-panel[hidden] {
         display: none;
       }
 
+      .tab-panel {
+        animation: fade-in var(--motion) var(--ease);
+      }
+
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+          transform: translateY(2px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* ---- 패널(카드): 마인크래프트 GUI 창의 베벨 프레임을 재현한다 —
+         왼쪽/위는 밝은 변, 오른쪽/아래는 어두운 변으로 "튀어나온" 느낌을 준다.
+         둥근 모서리 대신 각진 모서리(반지름 2px)로 픽셀아트 질감을 유지한다. ---- */
+
       .card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
+        background: var(--stone-800);
+        border-radius: 2px;
+        border-top: 2px solid var(--bevel-hi);
+        border-left: 2px solid var(--bevel-hi);
+        border-bottom: 2px solid var(--bevel-lo);
+        border-right: 2px solid var(--bevel-lo);
         padding: var(--space-4);
         margin-bottom: var(--space-4);
       }
 
       .card h2 {
+        font-family: var(--font-display);
+        font-weight: 500;
         margin: 0 0 var(--space-3);
-        font-size: 1.05rem;
+        font-size: 1.15rem;
+        letter-spacing: 0.01em;
       }
 
       .card p.hint {
         margin: 0 0 var(--space-3);
         color: var(--text-muted);
         font-size: 0.85rem;
+        line-height: 1.6;
       }
 
       label {
         display: block;
         margin-bottom: 0.35rem;
         font-weight: 600;
-        font-size: 0.85rem;
+        font-size: 0.78rem;
+        letter-spacing: 0.02em;
         color: var(--text-muted);
+        text-transform: uppercase;
       }
 
+      /* ---- 폼 컨트롤: 인벤토리 슬롯처럼 안으로 파인 느낌(베벨 반전) ---- */
+
       input,
+      select,
       textarea {
         width: 100%;
-        padding: 0.6rem 0.8rem;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border-strong);
-        background: var(--surface-alt);
+        padding: 0.6rem 0.7rem;
+        border-radius: 2px;
+        border-top: 2px solid var(--bevel-lo);
+        border-left: 2px solid var(--bevel-lo);
+        border-bottom: 2px solid var(--bevel-hi);
+        border-right: 2px solid var(--bevel-hi);
+        background: var(--stone-900);
         color: var(--text);
-        font-family: inherit;
-        font-size: 0.9rem;
+        font-family: var(--font-mono);
+        font-size: 0.88rem;
+        transition: border-color var(--motion-fast) var(--ease);
+      }
+
+      select {
+        cursor: pointer;
+      }
+
+      input:hover,
+      select:hover,
+      textarea:hover {
+        border-bottom-color: var(--stone-600);
+        border-right-color: var(--stone-600);
+      }
+
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible,
+      .btn:focus-visible,
+      .tab-btn:focus-visible,
+      .subtab-btn:focus-visible {
+        outline: 2px solid var(--xp);
+        outline-offset: 1px;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: var(--text-faint);
+      }
+
+      /* 숫자 입력 스핀 화살표는 브라우저 기본값(밝은 테마)이 그대로 남아있어서 눈에
+         띄게 겉돌았다 — 다크 테마에 맞게 색만 입힌다. appearance:textfield로 아예
+         숨겼다가 pseudo-element만 auto로 되돌리는 방식은 크로미움에서 그 시점 이후
+         스핀 버튼 자체가 렌더 트리에서 빠져서 안 먹혔다(실측 확인) — 그래서 버튼은
+         기본값(auto) 그대로 두고 필터로만 색을 바꾼다. */
+      input[type="number"]::-webkit-inner-spin-button,
+      input[type="number"]::-webkit-outer-spin-button {
+        filter: invert(1) brightness(0.7);
+        cursor: pointer;
+      }
+
+      input[type="checkbox"] {
+        width: auto;
+        accent-color: var(--xp);
       }
 
       textarea {
         min-height: 80px;
-        font-family: var(--font-mono, monospace);
+        font-family: var(--font-mono);
       }
 
       .field {
         margin-bottom: var(--space-3);
       }
 
+      /* ---- 버튼: 누르면 베벨이 뒤집혀서 "눌린" 물리적 피드백을 준다 ---- */
+
       .btn {
-        border: none;
-        border-radius: var(--radius-sm);
-        padding: 0.55rem 1rem;
-        font-weight: 700;
+        font-family: var(--font-display);
+        border-radius: 2px;
+        border-top: 2px solid var(--bevel-hi);
+        border-left: 2px solid var(--bevel-hi);
+        border-bottom: 2px solid var(--bevel-lo);
+        border-right: 2px solid var(--bevel-lo);
+        padding: 0.55rem 1.1rem;
+        font-weight: 500;
         font-size: 0.85rem;
         cursor: pointer;
-        background: var(--surface-alt);
+        background: var(--stone-700);
         color: var(--text);
-        border: 1px solid var(--border-strong);
+        transition: transform var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+      }
+
+      .btn:hover:not(:disabled) {
+        background: var(--stone-600);
+      }
+
+      .btn:active:not(:disabled) {
+        transform: translateY(1px);
+        border-top-color: var(--bevel-lo);
+        border-left-color: var(--bevel-lo);
+        border-bottom-color: var(--bevel-hi);
+        border-right-color: var(--bevel-hi);
       }
 
       .btn:disabled {
-        opacity: 0.5;
+        opacity: 0.45;
         cursor: not-allowed;
       }
 
       .btn-primary,
       .btn.active {
-        background: var(--accent);
-        color: var(--accent-contrast);
-        border-color: var(--accent);
+        background: var(--xp-dim);
+        color: var(--text);
+        border-top-color: var(--xp);
+        border-left-color: var(--xp);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--xp);
+        color: var(--xp-contrast);
       }
 
       .btn-danger {
-        background: transparent;
-        color: var(--danger);
-        border-color: var(--danger);
+        background: var(--redstone-dim);
+        color: var(--text);
+        border-top-color: var(--redstone);
+        border-left-color: var(--redstone);
+      }
+
+      .btn-danger:hover:not(:disabled) {
+        background: var(--redstone);
       }
 
       .btn-sm {
@@ -205,12 +430,15 @@
         gap: var(--space-2);
         flex-wrap: wrap;
         margin-top: var(--space-2);
+        align-items: center;
       }
 
       .status-text {
         color: var(--text-muted);
         font-size: 0.85rem;
       }
+
+      /* ---- 목록(태그 칩) ---- */
 
       .recent-list {
         list-style: none;
@@ -222,33 +450,49 @@
       }
 
       .recent-list li {
-        background: var(--surface-alt);
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        padding: 0.4rem 0.9rem;
+        display: flex;
+        align-items: center;
+        background: var(--stone-900);
+        border-top: 2px solid var(--bevel-hi);
+        border-left: 2px solid var(--bevel-hi);
+        border-bottom: 2px solid var(--bevel-lo);
+        border-right: 2px solid var(--bevel-lo);
+        border-radius: 2px;
+        padding: 0.35rem 0.8rem;
         font-size: 0.82rem;
         cursor: pointer;
+        transition: background var(--motion-fast) var(--ease);
       }
 
       .recent-list li:hover {
-        border-color: var(--accent);
+        background: var(--stone-700);
       }
 
+      /* 얼굴 아이콘은 인벤토리 슬롯처럼: 안으로 파인 어두운 정사각형 프레임 안에 픽셀
+         아트를 그대로 보여준다(부드럽게 흐리지 않음 — image-rendering: pixelated). */
       .player-face-icon {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         image-rendering: pixelated;
-        vertical-align: -3px;
-        margin-right: 0.4rem;
-        border-radius: 2px;
+        vertical-align: -5px;
+        margin-right: 0.45rem;
+        background: var(--stone-950);
+        border-top: 1px solid var(--bevel-lo);
+        border-left: 1px solid var(--bevel-lo);
+        border-bottom: 1px solid var(--bevel-hi);
+        border-right: 1px solid var(--bevel-hi);
+        padding: 1px;
       }
 
       .map-canvas {
         width: 100%;
         height: 520px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        background: var(--surface-alt);
+        border-radius: 2px;
+        border-top: 2px solid var(--bevel-lo);
+        border-left: 2px solid var(--bevel-lo);
+        border-bottom: 2px solid var(--bevel-hi);
+        border-right: 2px solid var(--bevel-hi);
+        background: var(--stone-950);
         cursor: grab;
         display: block;
       }
@@ -267,6 +511,8 @@
         gap: 0.35rem;
         margin-bottom: 0;
         font-weight: 400;
+        text-transform: none;
+        letter-spacing: normal;
         cursor: pointer;
       }
 
@@ -277,16 +523,26 @@
       }
 
       .item-card {
-        background: var(--surface-alt);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
+        background: var(--stone-900);
+        border-top: 2px solid var(--bevel-hi);
+        border-left: 2px solid var(--bevel-hi);
+        border-bottom: 2px solid var(--bevel-lo);
+        border-right: 2px solid var(--bevel-lo);
+        border-radius: 2px;
         padding: var(--space-3);
+        transition: border-color var(--motion-fast) var(--ease);
+      }
+
+      .item-card:has(.btn:hover) {
+        border-left-color: var(--xp-dim);
+        border-top-color: var(--xp-dim);
       }
 
       .item-card strong {
         display: block;
         margin-bottom: 0.25rem;
         font-size: 0.9rem;
+        font-weight: 600;
         word-break: break-all;
       }
 
@@ -313,15 +569,18 @@
       }
 
       .console-log {
-        background: var(--surface-alt);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
+        background: var(--stone-950);
+        border-top: 2px solid var(--bevel-lo);
+        border-left: 2px solid var(--bevel-lo);
+        border-bottom: 2px solid var(--bevel-hi);
+        border-right: 2px solid var(--bevel-hi);
+        border-radius: 2px;
         padding: var(--space-3);
         height: 420px;
         overflow-y: auto;
-        font-family: var(--font-mono, monospace);
+        font-family: var(--font-mono);
         font-size: 0.78rem;
-        line-height: 1.4;
+        line-height: 1.5;
         white-space: pre-wrap;
         word-break: break-all;
         margin: 0;
@@ -336,12 +595,50 @@
       .console-command-row input {
         flex: 1;
       }
+
+      /* 명령어 전송 성공 시 결과 로그 테두리가 잠깐 XP 초록으로 반짝인다 —
+         "보냈다"는 걸 조용히, 그러나 분명하게 알려준다. */
+      .flash-sent {
+        animation: flash-sent 500ms var(--ease);
+      }
+
+      @keyframes flash-sent {
+        0% {
+          border-top-color: var(--xp);
+          border-left-color: var(--xp);
+        }
+        100% {
+          border-top-color: var(--bevel-lo);
+          border-left-color: var(--bevel-lo);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          padding: 0 var(--space-3) var(--space-4);
+        }
+        .topbar h1 {
+          font-size: 1.2rem;
+        }
+        .grid-list {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.001ms !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
     </style>
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
-        <h1>WebCraftOps</h1>
+        <h1><span class="status-dot" id="connectionDot" title="연결 안 됨"></span>WebCraftOps</h1>
         <nav class="tabs" id="tabNav">
           <button class="tab-btn active" data-tab="connect">연결</button>
           <button class="tab-btn" data-tab="map" disabled>지도</button>
