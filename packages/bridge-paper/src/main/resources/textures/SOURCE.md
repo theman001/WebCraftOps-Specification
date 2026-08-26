@@ -35,6 +35,21 @@
 없음). 회색으로 보이는 블록이 계속 거슬리면 `Textures.OVERRIDES`에 예외를 추가할 것 —
 어떤 Material이 실패했는지는 `[Textures]` 경고 로그에 전부 남는다(같은 Material은 한 번만).
 
+## 상자(chest/trapped_chest/ender_chest) — 예외적으로 block이 아니라 entity 텍스처에서 크롭
+
+상자는 블록 텍스처가 없다(3D 모델 + 엔티티 텍스처 아틀라스라서 `block/chest.png` 같은
+파일 자체가 존재하지 않음 — 그래서 지금까지 회색 체커로 나왔었다). `assets/minecraft/
+textures/entity/chest/{normal,trapped,ender}.png`(64x64 UV 아틀라스)에서 자물쇠가 보이는
+"뚜껑 정면(lid front)" 영역만 잘라 `block/chest_front.png` 등으로 별도 번들했다:
+
+- 크롭 좌표: `(x=28, y=19, w=14, h=14)` — 세 파일 모두 UV 레이아웃이 동일해서 좌표 공유.
+  좌표는 64x64 원본을 4px 격자로 렌더링해 육안으로 자물쇠 위치를 확인한 뒤 잡았다(다른
+  텍스처 크롭과 동일 방식, `mobs/SOURCE.md` 참고).
+- 상단이 아니라 정면을 고른 이유: 하늘 뷰에서 그냥 나무 블록(예: `oak_planks`)과 구분이
+  안 되면 의미가 없다 — 검은 자물쇠 판이 보이는 정면이 훨씬 알아보기 쉽다(사용자 의견).
+- `OVERRIDES`에 `chest`→`chest_front`, `trapped_chest`→`trapped_chest_front`,
+  `ender_chest`→`ender_chest_front` 등록. 바이옴 틴트 대상 아님(원본에 이미 색이 있음).
+
 ## 애니메이션 텍스처(물/용암 등)
 
 일부 텍스처는 세로로 긴 스프라이트시트(예: 16x512 = 32프레임)다. 렌더러는 항상 맨 위
@@ -46,3 +61,10 @@
 게임이 바이옴별 색상을 곱해서 보여준다. `MapTileRenderer`는 이 블록들에 한해 표준 평원
 바이옴 근사 색(잔디/나뭇잎 `#7CBD6B` 계열, 물 `#3F76E4` 계열)을 곱해서 회색/보라 얼룩으로
 안 보이게 한다 — 바이옴별 정확한 색상까지는 아직 구현하지 않음(전부 평원 바이옴 색 근사).
+
+나뭇잎 중 어떤 게 틴트가 필요한지는 실제 픽셀을 분석해서 확인함(`avgSatDiff` — 채널간
+최대-최소 차이 평균): `oak/jungle/acacia/dark_oak/mangrove/birch/spruce_leaves`는 전부
+회색조 원본(0~14, 틴트 필요) → `FOLIAGE_TINT`에 포함. 반대로 `azalea/flowering_azalea/
+cherry_leaves`는 원본에 이미 색이 박혀 있음(70대, 틴트하면 안 됨) → `FOLIAGE_TINT`에서
+제외. (birch/spruce는 실제 게임에선 바이옴 무관 고정색이지 GRASS_COLOR 근사가 아니지만,
+이 지도는 근사 하나만 쓰므로 다른 나뭇잎과 같은 색으로 칠함.)

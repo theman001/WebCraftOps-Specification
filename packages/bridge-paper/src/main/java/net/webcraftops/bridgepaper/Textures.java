@@ -30,16 +30,25 @@ public final class Textures {
 
     // 텍스처 파일명이 Material 이름과 아예 다른 블록들 — 자동 규칙(_top / 그대로)으로는
     // 못 찾는 대표적인 케이스만 수동 등록.
-    private static final Map<String, String> OVERRIDES = Map.of(
-        "water", "water_still",
-        "lava", "lava_still",
-        "snow_block", "snow",
-        "magma_block", "magma",
-        "dried_kelp_block", "dried_kelp_top",
-        "smooth_quartz", "quartz_block_top",
-        "smooth_sandstone", "sandstone_top",
-        "smooth_red_sandstone", "red_sandstone_top",
-        "sticky_piston", "piston_top_sticky"
+    // Map.of는 최대 10쌍까지만 지원해서(11번째부터 컴파일 에러) 여기부턴 ofEntries 사용.
+    private static final Map<String, String> OVERRIDES = Map.ofEntries(
+        Map.entry("water", "water_still"),
+        Map.entry("lava", "lava_still"),
+        Map.entry("snow_block", "snow"),
+        Map.entry("magma_block", "magma"),
+        Map.entry("dried_kelp_block", "dried_kelp_top"),
+        Map.entry("smooth_quartz", "quartz_block_top"),
+        Map.entry("smooth_sandstone", "sandstone_top"),
+        Map.entry("smooth_red_sandstone", "red_sandstone_top"),
+        Map.entry("sticky_piston", "piston_top_sticky"),
+        // 상자는 블록 텍스처가 아니라 엔티티(3D 모델) 텍스처라 자동 규칙으로 못 찾는다.
+        // Mojang 클라이언트 jar의 entity/chest/{normal,trapped,ender}.png에서 자물쇠가
+        // 보이는 정면(lid front) UV(28,19,14x14)만 직접 크롭해 별도 파일로 번들했다 —
+        // 하늘에서 봤을 때 그냥 나무 블록과 구분되도록(사용자 요청: 위 대신 정면을 써서
+        // 상자임을 명확히 함). 크롭 근거는 이 파일 아래 SOURCE.md 참고.
+        Map.entry("chest", "chest_front"),
+        Map.entry("trapped_chest", "trapped_chest_front"),
+        Map.entry("ender_chest", "ender_chest_front")
     );
 
     // 파생 블록(슬래브/계단/벽/펜스/버튼/문 등)은 실제로 "부모 블록"과 같은 텍스처를 6면에
@@ -74,8 +83,13 @@ public final class Textures {
     private static final Set<String> GRASS_TINT = Set.of(
         "grass_block", "short_grass", "tall_grass", "fern", "large_fern", "sugar_cane"
     );
+    // 실측: 나뭇잎 텍스처 중 azalea/cherry/pale_oak는 원본 자체에 색이 박혀 있어 틴트가
+    // 필요 없지만(팔레트 스캔으로 확인), 나머지는 회색조 원본이라 틴트가 없으면 그냥
+    // 회색으로 보인다(birch/spruce도 실제 게임에선 바이옴 무관 고정색이지만, 여긴 근사
+    // 하나(GRASS_COLOR)만 쓰므로 같은 틴트를 적용).
     private static final Set<String> FOLIAGE_TINT = Set.of(
-        "oak_leaves", "jungle_leaves", "acacia_leaves", "dark_oak_leaves", "mangrove_leaves", "vine"
+        "oak_leaves", "jungle_leaves", "acacia_leaves", "dark_oak_leaves", "mangrove_leaves",
+        "birch_leaves", "spruce_leaves", "vine"
     );
     private static final Set<String> WATER_TINT = Set.of("water", "bubble_column");
 
