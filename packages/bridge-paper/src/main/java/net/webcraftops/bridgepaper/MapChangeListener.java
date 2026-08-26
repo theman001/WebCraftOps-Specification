@@ -5,6 +5,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 
 import java.util.logging.Logger;
 
@@ -32,6 +33,27 @@ public final class MapChangeListener implements Listener {
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         invalidate(event.getBlock().getLocation());
+    }
+
+    // MapTileRenderer가 미탐사 청크는 강제 생성 없이 플레이스홀더로 캐싱해두는데, 그
+    // 청크가 나중에 실제로 생성되면(플레이어가 걸어가서 등) 캐시를 지워야 다음 요청 때
+    // 진짜 지형이 그려진다. isNewChunk()가 true인 경우만(=이번이 첫 로드=방금 생성됨)
+    // 해당한다 — 이미 있던 청크를 그냥 메모리에 로드하는 흔한 경우엔 안 걸린다.
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent event) {
+        if (!event.isNewChunk()) {
+            return;
+        }
+        int cx = event.getChunk().getX();
+        int cz = event.getChunk().getZ();
+        String worldName = event.getWorld().getName();
+        renderer.invalidate(worldName, cx, cz);
+        boolean broadcasted = mapEvents.hasSubscribers();
+        if (broadcasted) {
+            mapEvents.broadcast("{\"cx\":" + cx + ",\"cz\":" + cz + "}");
+        }
+        LOGGER.info("[MapEvents] world=" + worldName + " cx=" + cx + " cz=" + cz
+            + " 신규 생성 청크 — 미탐사 플레이스홀더 캐시 무효화");
     }
 
     private void invalidate(Location location) {

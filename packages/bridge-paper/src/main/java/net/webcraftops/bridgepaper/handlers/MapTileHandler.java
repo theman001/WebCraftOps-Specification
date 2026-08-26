@@ -9,12 +9,20 @@ import org.bukkit.World;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
 import java.util.logging.Logger;
 
+// [실측 확인된 버그 → 수정] 지도 초기 로드 시 뷰포트에 걸친 청크 수십~수백 개가 한꺼번에
+// 요청되면 그만큼의 렌더 작업이 메인 스레드 큐에 동시에 쌓여 Paper Watchdog 타임아웃
+// (서버 강제 종료 → 재시작 반복)으로 이어지는 걸 실제 크래시 로그로 확인했다. 세마포어로
+// 동시 렌더 개수를 제한해 — 초과분은 (메인 스레드가 아니라) 이 핸들러가 도는 스레드풀
+// 워커에서 대기하므로 게임 자체는 안 막힌다.
+//
 // [디버깅] "[MapTileHandler]" 태그 — 요청이 실제로 여기까지 도달하는지(라우팅/토큰 문제
 // 배제), worldId 파싱이 맞는지, 에러면 어떤 예외였는지를 남긴다.
 public final class MapTileHandler implements HttpHandler {
     private static final Logger LOGGER = Logger.getLogger("BridgePaper");
+    private static final Semaphore CONCURRENT_RENDER_LIMIT = new Semaphore(4);
     private final MainThreadExecutor executor;
     private final MapTileRenderer renderer;
 
@@ -44,8 +52,15 @@ public final class MapTileHandler implements HttpHandler {
         int cz = parseIntOr(query.get("cz"), 0);
 
         try {
-            byte[] png = executor.runSync(() -> renderer.render(world, cx, cz), 10_000);
-            HttpUtil.sendBytes(exchange, 200, png, "image/png");
+            CONCURRENT_RENDER_LIMIT.acquire();
+            try {
+                byte[] png = executor.runSync(() -> renderer.render(world, cx, cz), 10_000);
+                HttpUtil.sendBytes(exchange, 200, png, "image/png");
+            } finally {
+                CONCURRENT_RENDER_LIMIT.release();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         } catch (Exception e) {
             LOGGER.severe("[MapTileHandler] world=" + worldId + " cx=" + cx + " cz=" + cz
                 + " 요청 처리 실패: " + e);

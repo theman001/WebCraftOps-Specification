@@ -7,6 +7,12 @@
 // 확인 — SSE 연결 자체가 안 됐는지, 연결은 됐는데 파싱이 실패하는지 구분된다.
 const TILE_BLOCKS = 16; // 타일 하나 = 청크 한 칸(16블록)
 const TILE_SYNC_DEBOUNCE_MS = 250;
+// [실측 확인된 버그 → 수정] 지도를 처음 열면 뷰포트에 걸친 타일(넓게 보면 수백 개)이
+// 한꺼번에 요청됐는데, 브릿지 쪽에서 그만큼의 렌더 작업이 메인 스레드에 몰려 실제로
+// 서버가 30초간 응답 없음(Paper Watchdog) → 강제 종료 → 재시작을 실측으로 확인했다.
+// 동시 요청 개수를 여기서도 제한해서(브릿지 쪽 세마포어와 이중 방어) 애초에 몰아치지
+// 않게 한다.
+const MAX_CONCURRENT_TILE_LOADS = 4;
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 16;
 const MARKER_SIZE = 16; // 화면 픽셀 고정 크기(줌과 무관 — 마커가 안 사라지거나 안 커지게)
@@ -146,22 +152,49 @@ export const createMap = ({ canvas, statusEl }) => {
     scheduleSync();
   };
 
-  const loadTile = (cx, cz, bust = false) => {
-    if (!currentBridgeUrl) return;
+  let activeTileLoads = 0;
+  const tileLoadQueue = []; // [{ cx, cz, bust }]
+
+  const pumpTileQueue = () => {
+    while (activeTileLoads < MAX_CONCURRENT_TILE_LOADS && tileLoadQueue.length > 0) {
+      const { cx, cz, bust } = tileLoadQueue.shift();
+      activeTileLoads += 1;
+      startTileLoad(cx, cz, bust);
+    }
+  };
+
+  const startTileLoad = (cx, cz, bust) => {
     const tileKey = key(cx, cz);
     const params = new URLSearchParams({ bridgeUrl: currentBridgeUrl, cx: String(cx), cz: String(cz) });
     if (bust) params.set("v", String(Date.now()));
     const img = new Image();
     const entry = { img, status: "loading" };
     tiles.set(tileKey, entry);
+    const finish = () => {
+      activeTileLoads -= 1;
+      pumpTileQueue();
+    };
     img.onload = () => {
       entry.status = "ready";
       draw();
+      finish();
     };
     img.onerror = () => {
       entry.status = "error";
+      finish();
     };
     img.src = `bridge/world/overworld/map/tile?${params.toString()}`;
+  };
+
+  // 즉시 로드하지 않고 큐에 넣기만 한다 — 실제 요청은 pumpTileQueue가 동시 개수를
+  // 제한하며 순서대로 시작한다. tiles에 바로 "loading" 상태를 심어둬서 syncTiles가
+  // 큐에 이미 있는 타일을 중복으로 또 넣지 않는다.
+  const loadTile = (cx, cz, bust = false) => {
+    if (!currentBridgeUrl) return;
+    const tileKey = key(cx, cz);
+    tiles.set(tileKey, { img: null, status: "loading" });
+    tileLoadQueue.push({ cx, cz, bust });
+    pumpTileQueue();
   };
 
   const visibleChunkRange = () => {

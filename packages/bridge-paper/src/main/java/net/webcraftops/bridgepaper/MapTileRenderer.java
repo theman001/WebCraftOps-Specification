@@ -16,6 +16,14 @@ import java.util.logging.Logger;
 // 바뀌는 한 결과를 캐싱하고, MapChangeListener가 블록 배치/파괴 시 해당 청크만 무효화한다
 // — 매번 다시 256개 컬럼을 스캔/합성하지 않아도 되게 하는 게 "실시간" 요구사항의 핵심.
 //
+// [실측 확인된 버그 → 수정] 지도를 처음 불러올 때 뷰포트에 걸친 청크를 한꺼번에 요청하는데,
+// 그중 한 번도 안 가본(생성 안 된) 청크가 있으면 getHighestBlockAt()이 그 청크를 강제로
+// 생성시키면서 메인 스레드를 완전히 막아버렸다 — 여러 개 겹치면 Paper Watchdog이 "서버
+// 30초 무응답"으로 판단해 프로세스를 죽이고, 그게 반복 재시작으로 보였다(실제 크래시
+// 스레드 덤프로 확인: MapTileRenderer.render → ChunkLoadTask 대기). 그래서 미생성 청크는
+// 강제 생성 없이 "미탐사" 표시만 즉시 돌려준다 — MapChangeListener의 ChunkLoadEvent
+// 리스너가 실제로 생성되는 순간 캐시를 무효화해서 다음 요청 때 진짜 지형으로 바뀐다.
+//
 // [디버깅] "[MapTile]" 태그로 캐시 미스(실제 렌더 발생)마다 소요 시간을 남긴다. 렌더링이
 // 유독 느리거나(메인 스레드 프리즈 의심) 특정 (cx,cz)에서만 에러가 나면 여기서 잡힌다.
 public final class MapTileRenderer {
@@ -23,6 +31,7 @@ public final class MapTileRenderer {
     private static final int PIXELS_PER_BLOCK = 8;
     private static final int TILE_SIZE = CHUNK_SIZE * PIXELS_PER_BLOCK; // 128
     private static final Logger LOGGER = Logger.getLogger("BridgePaper");
+    private static final int UNEXPLORED_COLOR = 0xFF0B1220; // 프런트 배경색과 맞춤
 
     private final Map<String, byte[]> cache = new ConcurrentHashMap<>();
 
@@ -32,6 +41,16 @@ public final class MapTileRenderer {
         byte[] cached = cache.get(key);
         if (cached != null) {
             return cached;
+        }
+
+        // 청크 생성을 절대 트리거하지 않는 확인 — isChunkGenerated는 생성 안 된 청크를
+        // 그냥 "없다"고만 답하고 절대 블로킹하지 않는다(getHighestBlockAt과 결정적 차이).
+        if (!world.isChunkGenerated(cx, cz)) {
+            byte[] bytes = encodeSolid(UNEXPLORED_COLOR);
+            cache.put(key, bytes);
+            LOGGER.info("[MapTile] world=" + world.getName() + " cx=" + cx + " cz=" + cz
+                + " 미탐사 청크 — 생성 트리거 없이 플레이스홀더 반환");
+            return bytes;
         }
 
         long startedAt = System.nanoTime();
@@ -65,6 +84,18 @@ public final class MapTileRenderer {
 
     public void invalidate(String worldName, int cx, int cz) {
         cache.remove(cacheKey(worldName, cx, cz));
+    }
+
+    private static byte[] encodeSolid(int argb) throws IOException {
+        BufferedImage tile = new BufferedImage(TILE_SIZE, TILE_SIZE, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < TILE_SIZE; y++) {
+            for (int x = 0; x < TILE_SIZE; x++) {
+                tile.setRGB(x, y, argb);
+            }
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ImageIO.write(tile, "png", out);
+        return out.toByteArray();
     }
 
     private static void stamp(BufferedImage tile, BufferedImage texture, int px, int pz) {
