@@ -18,7 +18,7 @@ const MAX_SCALE = 16;
 const MARKER_SIZE = 16; // 화면 픽셀 고정 크기(줌과 무관 — 마커가 안 사라지거나 안 커지게)
 const CLICK_DRAG_THRESHOLD = 4; // 이 이하로 움직이면 드래그가 아니라 클릭으로 취급
 
-export const createMap = ({ canvas, statusEl }) => {
+export const createMap = ({ canvas, statusEl, onPlayersUpdate }) => {
   const ctx = canvas.getContext("2d");
 
   let currentBridgeUrl = null;
@@ -339,6 +339,7 @@ export const createMap = ({ canvas, statusEl }) => {
           items: parsed.items ?? [],
         };
         draw();
+        onPlayersUpdate?.(latestEntities.players);
       } catch (error) {
         console.warn("[EntityStream] 스냅샷 파싱 실패", error, event.data);
       }

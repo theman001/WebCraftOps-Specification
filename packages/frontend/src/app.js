@@ -13,6 +13,7 @@ const mapStatus = document.getElementById("mapStatus");
 const showPlayersToggle = document.getElementById("showPlayers");
 const showMobsToggle = document.getElementById("showMobs");
 const showItemsToggle = document.getElementById("showItems");
+const mapPlayerList = document.getElementById("mapPlayerList");
 
 const blueprintFileInput = document.getElementById("blueprintFile");
 const blueprintNameInput = document.getElementById("blueprintName");
@@ -46,6 +47,7 @@ const consoleLog = document.getElementById("consoleLog");
 const consoleStatus = document.getElementById("consoleStatus");
 const consoleCommandForm = document.getElementById("consoleCommandForm");
 const consoleCommandInput = document.getElementById("consoleCommandInput");
+const consoleScrollBottomButton = document.getElementById("consoleScrollBottomButton");
 
 const RECENT_KEY = "webcraftops.recentServers";
 const SESSION_KEY = "webcraftops.session";
@@ -56,7 +58,21 @@ const historyStack = [];
 const redoStack = [];
 let auditCursor = null;
 let consoleEventSource = null;
-const mapInstance = createMap({ canvas: mapCanvas, statusEl: mapStatus });
+const renderMapPlayerList = (players) => {
+  mapPlayerList.innerHTML = "";
+  if (players.length === 0) {
+    mapPlayerList.innerHTML = '<li class="empty-note" style="cursor: default">접속한 유저가 없습니다.</li>';
+    return;
+  }
+  players.forEach((player) => {
+    const li = document.createElement("li");
+    li.textContent = player.name;
+    li.addEventListener("click", () => mapInstance.focusOn(player.x, player.z));
+    mapPlayerList.appendChild(li);
+  });
+};
+
+const mapInstance = createMap({ canvas: mapCanvas, statusEl: mapStatus, onPlayersUpdate: renderMapPlayerList });
 
 const STATUS_LABEL = {
   queued: "대기",
@@ -754,6 +770,9 @@ consoleCommandForm.addEventListener("submit", (event) => {
   }
   consoleCommandInput.value = "";
   sendConsoleCommand(bridgeUrl, command);
+});
+consoleScrollBottomButton.addEventListener("click", () => {
+  consoleLog.scrollTop = consoleLog.scrollHeight;
 });
 
 // ---- 이벤트 바인딩 ----
