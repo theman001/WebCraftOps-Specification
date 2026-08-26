@@ -493,12 +493,46 @@ const buildCommandCard = (command) => {
   return card;
 };
 
+// 플레이어/서버를 한 페이지에 같이 늘어놓으면 카드가 너무 많아 스크롤이 길어지므로,
+// 서브탭으로 나눠 한 번에 한 카테고리만 보여준다.
+let activeCommandCategory = COMMAND_CATEGORIES[0].id;
+
 const renderCommandCatalog = () => {
+  const subTabsNav = document.getElementById("commandSubTabs");
   COMMAND_CATEGORIES.forEach((category) => {
     const group = document.getElementById(`commandGroup-${category.id}`);
     COMMANDS.filter((command) => command.category === category.id).forEach((command) => {
       group.appendChild(buildCommandCard(command));
     });
+
+    const subTabButton = document.createElement("button");
+    subTabButton.type = "button";
+    subTabButton.className = `subtab-btn${category.id === activeCommandCategory ? " active" : ""}`;
+    subTabButton.textContent = category.label;
+    subTabButton.addEventListener("click", () => {
+      activeCommandCategory = category.id;
+      applyCommandFilters();
+    });
+    subTabsNav.appendChild(subTabButton);
+  });
+  applyCommandFilters();
+};
+
+// 서브탭 전환과 검색 필터가 같은 표시 로직을 공유한다 — 활성 카테고리만 보이고, 그 안에서
+// 검색어에 맞는 카드만 남는다.
+const applyCommandFilters = () => {
+  const query = commandSearchInput.value.trim().toLowerCase();
+  document.querySelectorAll("#commandSubTabs .subtab-btn").forEach((btn, index) => {
+    btn.classList.toggle("active", COMMAND_CATEGORIES[index].id === activeCommandCategory);
+  });
+  COMMAND_CATEGORIES.forEach((category) => {
+    const isActiveCategory = category.id === activeCommandCategory;
+    const group = document.getElementById(`commandGroup-${category.id}`);
+    group.querySelectorAll(".command-card").forEach((card) => {
+      const matches = !query || card.dataset.searchText.includes(query);
+      card.style.display = matches ? "" : "none";
+    });
+    document.getElementById(`commandCategory-${category.id}`).style.display = isActiveCategory ? "" : "none";
   });
 };
 
@@ -526,21 +560,7 @@ const updateCommandPlayerOptions = (players) => {
   });
 };
 
-commandSearchInput.addEventListener("input", () => {
-  const query = commandSearchInput.value.trim().toLowerCase();
-  COMMAND_CATEGORIES.forEach((category) => {
-    const group = document.getElementById(`commandGroup-${category.id}`);
-    let visibleCount = 0;
-    group.querySelectorAll(".command-card").forEach((card) => {
-      const matches = !query || card.dataset.searchText.includes(query);
-      card.style.display = matches ? "" : "none";
-      if (matches) visibleCount += 1;
-    });
-    // 검색어에 매칭되는 카드가 하나도 없는 카테고리는 빈 제목만 남지 않게 통째로 숨긴다.
-    document.getElementById(`commandCategory-${category.id}`).style.display =
-      visibleCount === 0 ? "none" : "";
-  });
-});
+commandSearchInput.addEventListener("input", applyCommandFilters);
 
 renderCommandCatalog();
 

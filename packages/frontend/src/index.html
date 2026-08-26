@@ -90,6 +90,29 @@
         cursor: not-allowed;
       }
 
+      .subtabs {
+        display: flex;
+        gap: var(--space-2);
+        margin-bottom: var(--space-4);
+      }
+
+      .subtab-btn {
+        border: 1px solid var(--border-strong);
+        background: var(--surface);
+        color: var(--text-muted);
+        padding: 0.45rem 1rem;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+
+      .subtab-btn.active {
+        background: var(--accent);
+        color: var(--accent-contrast);
+        border-color: var(--accent);
+      }
+
       .tab-panel[hidden] {
         display: none;
       }
@@ -391,12 +414,11 @@
               <input id="commandSearchInput" type="text" placeholder="예: tp, 순간이동, 날씨" autocomplete="off" />
             </div>
           </div>
+          <nav class="subtabs" id="commandSubTabs"></nav>
           <div class="card" id="commandCategory-player">
-            <h2>플레이어</h2>
             <div class="grid-list" id="commandGroup-player"></div>
           </div>
           <div class="card" id="commandCategory-server">
-            <h2>서버</h2>
             <div class="grid-list" id="commandGroup-server"></div>
           </div>
           <div class="card">
