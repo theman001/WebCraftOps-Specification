@@ -17,6 +17,9 @@ const MIN_SCALE = 0.5;
 const MAX_SCALE = 16;
 const MARKER_SIZE = 16; // 화면 픽셀 고정 크기(줌과 무관 — 마커가 안 사라지거나 안 커지게)
 const CLICK_DRAG_THRESHOLD = 4; // 이 이하로 움직이면 드래그가 아니라 클릭으로 취급
+// 백엔드 EntitySnapshotBroadcaster가 6틱(300ms)마다 스냅샷을 보낸다 — 이 구간을 화면에서
+// 선형 보간해서 그린다(전송 빈도는 그대로 두고, 매 프레임 그리는 화면 쪽만 부드럽게).
+const SNAPSHOT_INTERVAL_MS = 300;
 
 export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) => {
   const ctx = canvas.getContext("2d");
@@ -45,6 +48,42 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
   // 중심을 계속 그 엔티티에 고정하는 개념이다 — 매 스냅샷마다 좌표를 다시 읽어와 origin을
   // 갱신한다. 실제로 지도를 드래그하면(다른 곳을 보고 싶다는 뜻이므로) 자동 해제한다.
   let lockedTarget = null; // { category, id, name } | null
+
+  // 스냅샷은 300ms에 한 번만 오는데 화면은 매 프레임(rAF) 그리므로, 스냅샷 사이 구간을
+  // 이전 위치→새 위치로 선형 보간해서 그린다 — 안 그러면 스냅샷마다 순간이동하듯 뚝뚝
+  // 끊겨 보인다(온라인 게임 클라이언트가 흔히 쓰는 방식 — 전송 빈도가 아니라 렌더링
+  // 쪽에서 부드럽게 만든다).
+  const motionState = { players: new Map(), mobs: new Map(), items: new Map() }; // id -> {prevX,prevZ,currX,currZ,t0}
+
+  const idOf = (category, entity) => (category === "players" ? entity.uuid : entity.id);
+
+  const interpolate = (state, now) => {
+    const t = Math.min(1, (now - state.t0) / SNAPSHOT_INTERVAL_MS);
+    return { x: state.prevX + (state.currX - state.prevX) * t, z: state.prevZ + (state.currZ - state.prevZ) * t };
+  };
+
+  // 지금 화면에 보이는(보간 중인) 위치를 그대로 다음 구간의 시작점으로 삼는다 — 안 그러면
+  // 새 스냅샷이 올 때마다 이전 목표 지점으로 순간 복귀했다가 다시 움직이는 것처럼 보인다.
+  const updateMotionState = (category, entities) => {
+    const map = motionState[category];
+    const now = performance.now();
+    const seen = new Set();
+    for (const entity of entities) {
+      const id = idOf(category, entity);
+      seen.add(id);
+      const prev = map.get(id);
+      const start = prev ? interpolate(prev, now) : { x: entity.x, z: entity.z };
+      map.set(id, { prevX: start.x, prevZ: start.z, currX: entity.x, currZ: entity.z, t0: now });
+    }
+    for (const id of Array.from(map.keys())) {
+      if (!seen.has(id)) map.delete(id);
+    }
+  };
+
+  const positionOf = (category, entity) => {
+    const state = motionState[category].get(idOf(category, entity));
+    return state ? interpolate(state, performance.now()) : { x: entity.x, z: entity.z };
+  };
 
   const key = (cx, cz) => `${cx},${cz}`;
 
@@ -154,7 +193,8 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     markerHitTargets = [];
     if (entityVisibility.items) {
       for (const item of latestEntities.items) {
-        drawMarker(itemIconFor(item.material), item.x, item.z, null, {
+        const { x, z } = positionOf("items", item);
+        drawMarker(itemIconFor(item.material), x, z, null, {
           category: "items",
           id: item.id,
           name: item.material,
@@ -163,7 +203,8 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     }
     if (entityVisibility.mobs) {
       for (const mob of latestEntities.mobs) {
-        drawMarker(mobIconFor(mob.type), mob.x, mob.z, mob.name, {
+        const { x, z } = positionOf("mobs", mob);
+        drawMarker(mobIconFor(mob.type), x, z, mob.name, {
           category: "mobs",
           id: mob.id,
           name: mob.name ?? mob.type,
@@ -172,7 +213,8 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     }
     if (entityVisibility.players) {
       for (const player of latestEntities.players) {
-        drawMarker(playerIconFor(player.uuid), player.x, player.z, player.name, {
+        const { x, z } = positionOf("players", player);
+        drawMarker(playerIconFor(player.uuid), x, z, player.name, {
           category: "players",
           id: player.uuid,
           name: player.name,
@@ -413,8 +455,11 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
           mobs: parsed.mobs ?? [],
           items: parsed.items ?? [],
         };
-        applyLock(); // 잠긴 엔티티가 있으면 이번 스냅샷의 새 좌표로 지도 중심을 다시 맞춘다.
-        draw();
+        // 실제 그리기는 안 한다 — 목표 좌표만 갱신해두면 rAF 루프가 매 프레임 보간해서
+        // 그린다(카메라 추적도 같은 루프 안에서 applyLock()이 매 프레임 처리).
+        updateMotionState("players", latestEntities.players);
+        updateMotionState("mobs", latestEntities.mobs);
+        updateMotionState("items", latestEntities.items);
         onPlayersUpdate?.(latestEntities.players);
       } catch (error) {
         console.warn("[EntityStream] 스냅샷 파싱 실패", error, event.data);
@@ -432,7 +477,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
   const findEntity = (category, id) => {
     const list = latestEntities[category];
     if (!list) return null;
-    return list.find((entity) => (category === "players" ? entity.uuid : entity.id) === id) ?? null;
+    return list.find((entity) => idOf(category, entity) === id) ?? null;
   };
 
   // 엔티티 좌표로 지도 중심을 옮긴다(잠금 상태의 "이번 순간 위치 반영"과, 최초 클릭 시의
@@ -450,7 +495,10 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
       clearLock();
       return;
     }
-    centerOn(entity.x, entity.z);
+    // 보간된(매 프레임 부드럽게 움직이는) 위치를 그대로 카메라 중심으로 써야 카메라도
+    // 마커처럼 뚝뚝 끊기지 않고 같이 부드럽게 따라간다.
+    const { x, z } = positionOf(lockedTarget.category, entity);
+    centerOn(x, z);
   };
 
   const clearLock = () => {
@@ -473,10 +521,22 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     scheduleSync();
   };
 
+  // 마커/카메라 보간을 매 프레임 반영하는 루프. 스냅샷 도착(onmessage)이 아니라 여기서
+  // draw()를 계속 불러야 스냅샷 사이 구간에서도 화면이 움직인다.
+  let animationFrameId = null;
+  const tick = () => {
+    applyLock();
+    draw();
+    animationFrameId = requestAnimationFrame(tick);
+  };
+
   const start = (bridgeUrl) => {
     currentBridgeUrl = bridgeUrl;
     tiles.clear();
     playerIconCache.clear();
+    motionState.players.clear();
+    motionState.mobs.clear();
+    motionState.items.clear();
     lockedTarget = null;
     onFocusChange?.(null);
     statusEl.textContent = "지도 불러오는 중...";
@@ -484,6 +544,9 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     syncTiles();
     connectEvents(bridgeUrl);
     connectEntities(bridgeUrl);
+    if (animationFrameId === null) {
+      animationFrameId = requestAnimationFrame(tick);
+    }
   };
 
   return { start, lockOnto, clearLock, setEntityVisibility };

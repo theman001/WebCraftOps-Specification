@@ -1,4 +1,5 @@
 import { createMap } from "./map.js";
+import { COMMAND_CATEGORIES, COMMANDS } from "./commands.js";
 
 const bridgeInput = document.getElementById("bridgeUrl");
 const testButton = document.getElementById("testButton");
@@ -18,33 +19,8 @@ const mapFocusRow = document.getElementById("mapFocusRow");
 const mapFocusStatus = document.getElementById("mapFocusStatus");
 const mapFocusReleaseButton = document.getElementById("mapFocusReleaseButton");
 
-const blueprintFileInput = document.getElementById("blueprintFile");
-const blueprintNameInput = document.getElementById("blueprintName");
-const blueprintTagsInput = document.getElementById("blueprintTags");
-const uploadBlueprintButton = document.getElementById("uploadBlueprintButton");
-const refreshBlueprintsButton = document.getElementById("refreshBlueprintsButton");
-const blueprintStatus = document.getElementById("blueprintStatus");
-const blueprintList = document.getElementById("blueprintList");
-
-const editJobList = document.getElementById("editJobList");
-const refreshJobsButton = document.getElementById("refreshJobsButton");
-const editJobStatus = document.getElementById("editJobStatus");
-const undoButton = document.getElementById("undoButton");
-const redoButton = document.getElementById("redoButton");
-const historyStatus = document.getElementById("historyStatus");
-const historyList = document.getElementById("historyList");
-
-const auditUserIdInput = document.getElementById("auditUserId");
-const auditWorldIdInput = document.getElementById("auditWorldId");
-const auditCommandTypeInput = document.getElementById("auditCommandType");
-const auditSinceInput = document.getElementById("auditSince");
-const auditUntilInput = document.getElementById("auditUntil");
-const auditLimitInput = document.getElementById("auditLimit");
-const refreshAuditButton = document.getElementById("refreshAuditButton");
-const loadMoreAuditButton = document.getElementById("loadMoreAuditButton");
-const auditStatus = document.getElementById("auditStatus");
-const auditList = document.getElementById("auditList");
-const loadMoreAuditLabel = loadMoreAuditButton.textContent;
+const commandSearchInput = document.getElementById("commandSearchInput");
+const commandResultLog = document.getElementById("commandResultLog");
 
 const consoleLog = document.getElementById("consoleLog");
 const consoleStatus = document.getElementById("consoleStatus");
@@ -55,12 +31,9 @@ const consoleScrollBottomButton = document.getElementById("consoleScrollBottomBu
 const RECENT_KEY = "webcraftops.recentServers";
 const SESSION_KEY = "webcraftops.session";
 const SESSION_MAX_IDLE_MS = 3 * 60 * 60 * 1000; // 3시간 자리비움 시 세션 만료
-const HISTORY_MAX = 10;
 
-const historyStack = [];
-const redoStack = [];
-let auditCursor = null;
 let consoleEventSource = null;
+let latestOnlinePlayers = []; // 명령어 탭의 플레이어 드롭다운/자동완성이 여길 참조한다.
 // uuid별로 li를 유지해서, 매 스냅샷(300ms)마다 얼굴 아이콘을 다시 요청하지 않게 한다
 // (엔티티 목록은 위치가 바뀔 때마다 통째로 갱신되지만, 얼굴 이미지는 유저가 들어오고
 // 나갈 때만 새로 받아오면 충분함).
@@ -98,6 +71,14 @@ const renderMapPlayerList = (players) => {
   }
 };
 
+// 지도 탭의 플레이어 목록 갱신에 얹혀서, 명령어 탭의 플레이어 드롭다운/자동완성도 같이
+// 최신 상태로 유지한다 — 별도로 엔티티 스트림을 또 구독할 필요 없음.
+const onPlayersUpdate = (players) => {
+  renderMapPlayerList(players);
+  latestOnlinePlayers = players;
+  updateCommandPlayerOptions(players);
+};
+
 // 지도 위 마커/유저 목록을 클릭해 "고정"하면(단순 1회 이동이 아니라 대상이 움직이는 동안
 // 계속 화면 중앙에 붙어 따라감) 여기서 상태 표시 + 해제 버튼을 보여준다.
 const renderMapFocusStatus = (name) => {
@@ -108,18 +89,9 @@ const renderMapFocusStatus = (name) => {
 const mapInstance = createMap({
   canvas: mapCanvas,
   statusEl: mapStatus,
-  onPlayersUpdate: renderMapPlayerList,
+  onPlayersUpdate,
   onFocusChange: renderMapFocusStatus,
 });
-
-const STATUS_LABEL = {
-  queued: "대기",
-  running: "실행 중",
-  paused: "일시정지",
-  completed: "완료",
-  failed: "실패",
-  canceled: "취소됨",
-};
 
 // ---- 탭 ----
 
@@ -301,9 +273,6 @@ const testConnection = async () => {
       enableTabs();
       switchTab("map");
       mapInstance.start(normalized);
-      await loadEditJobs();
-      await loadBlueprints();
-      await loadAuditEntries();
       connectConsoleStream(normalized);
     } else {
       updateResult(`연결 실패 (${response.status})`);
@@ -313,434 +282,6 @@ const testConnection = async () => {
     updateResult(`연결 실패: ${message}`);
   } finally {
     testButton.disabled = false;
-  }
-};
-
-// ---- Edit Job ----
-
-const fetchEditJobs = async () => {
-  const response = await fetch("bridge/edit/jobs");
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const createEditJobRequest = async (createdBy, commands, bridgeUrl) => {
-  const query = bridgeUrl ? `?bridgeUrl=${encodeURIComponent(bridgeUrl)}` : "";
-  const response = await fetch(`bridge/world/overworld/edit/jobs${query}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ createdBy, commands }),
-  });
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const updateEditJobStatus = async (jobId, action, bridgeUrl) => {
-  const query = bridgeUrl ? `?bridgeUrl=${encodeURIComponent(bridgeUrl)}` : "";
-  const response = await fetch(`bridge/edit/jobs/${jobId}/${action}${query}`, {
-    method: "POST",
-  });
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const renderEditJobs = (jobs) => {
-  editJobList.innerHTML = "";
-
-  if (jobs.length === 0) {
-    editJobList.innerHTML = '<p class="empty-note">생성된 작업이 없습니다.</p>';
-    return;
-  }
-
-  jobs.forEach((job) => {
-    const card = document.createElement("div");
-    card.className = "item-card";
-
-    const badge = document.createElement("span");
-    badge.className = `badge badge-${job.status}`;
-    badge.textContent = STATUS_LABEL[job.status] ?? job.status;
-
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.style.marginTop = "0.4rem";
-    meta.textContent = `월드: ${job.worldId}`;
-
-    const progressTrack = document.createElement("div");
-    progressTrack.className = "progress-track";
-    const progressFill = document.createElement("div");
-    progressFill.className = "progress-fill";
-    const total = job.stats?.estimatedBlocks || 1;
-    const done = job.stats?.doneBlocks ?? 0;
-    progressFill.style.width = `${Math.min(100, Math.round((done / total) * 100))}%`;
-    progressTrack.appendChild(progressFill);
-
-    const progressLabel = document.createElement("span");
-    progressLabel.className = "meta";
-    progressLabel.textContent = `진행: ${done}/${job.stats?.estimatedBlocks ?? 0}`;
-
-    const actions = document.createElement("div");
-    actions.className = "btn-row";
-
-    const pauseButton = document.createElement("button");
-    pauseButton.className = "btn btn-sm";
-    pauseButton.textContent = "일시정지";
-    pauseButton.disabled = job.status !== "running";
-    pauseButton.addEventListener("click", async () => {
-      const bridgeUrl = bridgeInput.value.trim() || undefined;
-      await updateEditJobStatus(job.jobId, "pause", bridgeUrl);
-      recordAction(job.jobId, "pause", "작업 일시정지");
-      await loadEditJobs();
-    });
-
-    const resumeButton = document.createElement("button");
-    resumeButton.className = "btn btn-sm";
-    resumeButton.textContent = "재개";
-    resumeButton.disabled = job.status !== "paused";
-    resumeButton.addEventListener("click", async () => {
-      const bridgeUrl = bridgeInput.value.trim() || undefined;
-      await updateEditJobStatus(job.jobId, "resume", bridgeUrl);
-      recordAction(job.jobId, "resume", "작업 재개");
-      await loadEditJobs();
-    });
-
-    const cancelButton = document.createElement("button");
-    cancelButton.className = "btn btn-sm btn-danger";
-    cancelButton.textContent = "취소";
-    cancelButton.disabled = ["completed", "canceled"].includes(job.status);
-    cancelButton.addEventListener("click", async () => {
-      const bridgeUrl = bridgeInput.value.trim() || undefined;
-      await updateEditJobStatus(job.jobId, "cancel", bridgeUrl);
-      recordAction(job.jobId, "cancel", "작업 취소");
-      await loadEditJobs();
-    });
-
-    actions.appendChild(pauseButton);
-    actions.appendChild(resumeButton);
-    actions.appendChild(cancelButton);
-
-    card.appendChild(badge);
-    card.appendChild(meta);
-    card.appendChild(progressTrack);
-    card.appendChild(progressLabel);
-    card.appendChild(actions);
-    editJobList.appendChild(card);
-  });
-};
-
-const loadEditJobs = async () => {
-  try {
-    const { response, payload } = await fetchEditJobs();
-    if (!response.ok) {
-      editJobStatus.textContent = `작업 목록 로드 실패 (${response.status})`;
-      return;
-    }
-    editJobStatus.textContent = `${payload.length}개 작업`;
-    renderEditJobs(payload);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    editJobStatus.textContent = `작업 목록 로드 실패: ${message}`;
-  }
-};
-
-// ---- Undo/Redo ----
-
-const getInverseAction = (action) => {
-  switch (action) {
-    case "pause":
-      return "resume";
-    case "resume":
-      return "pause";
-    case "cancel":
-      return null;
-    case "create":
-      return "revert";
-    default:
-      return null;
-  }
-};
-
-const getRedoAction = (action) => {
-  switch (action) {
-    case "pause":
-    case "resume":
-      return action;
-    default:
-      return null;
-  }
-};
-
-const pushHistory = (entry) => {
-  historyStack.unshift(entry);
-  if (historyStack.length > HISTORY_MAX) {
-    historyStack.pop();
-  }
-  redoStack.length = 0;
-  renderHistory();
-};
-
-const renderHistory = () => {
-  historyList.innerHTML = "";
-  if (historyStack.length === 0) {
-    historyStatus.textContent = "기록이 없습니다.";
-  } else {
-    historyStatus.textContent = `최근 ${historyStack.length}건`;
-  }
-  historyStack.forEach((entry) => {
-    const item = document.createElement("li");
-    item.textContent = `[${entry.timestamp}] ${entry.label}`;
-    historyList.appendChild(item);
-  });
-  undoButton.disabled = historyStack.length === 0 || !historyStack[0].inverseAction;
-  redoButton.disabled = redoStack.length === 0 || !redoStack[0].redoAction;
-};
-
-const recordAction = (jobId, action, label) => {
-  pushHistory({
-    jobId,
-    action,
-    inverseAction: getInverseAction(action),
-    redoAction: getRedoAction(action),
-    label,
-    timestamp: new Date().toLocaleTimeString(),
-  });
-};
-
-const runUndo = async () => {
-  const bridgeUrl = bridgeInput.value.trim() || undefined;
-  const entry = historyStack.shift();
-  if (!entry || !entry.inverseAction) {
-    historyStatus.textContent = "되돌릴 수 없는 작업입니다.";
-    renderHistory();
-    return;
-  }
-  historyStatus.textContent = "되돌리는 중...";
-  try {
-    await updateEditJobStatus(entry.jobId, entry.inverseAction, bridgeUrl);
-    redoStack.unshift(entry);
-    historyStatus.textContent = "완료";
-    renderHistory();
-    await loadEditJobs();
-  } catch {
-    historyStatus.textContent = "되돌리기 실패";
-  }
-};
-
-const runRedo = async () => {
-  const bridgeUrl = bridgeInput.value.trim() || undefined;
-  const entry = redoStack.shift();
-  if (!entry || !entry.redoAction) {
-    historyStatus.textContent = "다시 실행할 수 없는 작업입니다.";
-    renderHistory();
-    return;
-  }
-  historyStatus.textContent = "다시 실행하는 중...";
-  try {
-    await updateEditJobStatus(entry.jobId, entry.redoAction, bridgeUrl);
-    historyStack.unshift(entry);
-    historyStatus.textContent = "완료";
-    renderHistory();
-    await loadEditJobs();
-  } catch {
-    historyStatus.textContent = "다시 실행 실패";
-  }
-};
-
-// ---- 블루프린트 ----
-
-const fetchBlueprints = async () => {
-  const response = await fetch("blueprints");
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const createBlueprint = async (blueprint) => {
-  const response = await fetch("blueprints", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(blueprint),
-  });
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const createPasteJob = async (blueprintId) => {
-  const bridgeUrl = bridgeInput.value.trim() || undefined;
-  return createEditJobRequest("ui", [{ type: "pasteBlueprint", params: { blueprintId } }], bridgeUrl);
-};
-
-const renderBlueprints = (blueprints) => {
-  blueprintList.innerHTML = "";
-
-  if (blueprints.length === 0) {
-    blueprintList.innerHTML = '<p class="empty-note">등록된 블루프린트가 없습니다.</p>';
-    return;
-  }
-
-  blueprints.forEach((blueprint) => {
-    const card = document.createElement("div");
-    card.className = "item-card";
-
-    const title = document.createElement("strong");
-    title.textContent = blueprint.name ?? blueprint.id ?? "이름 없음";
-
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = `블록 ${blueprint.blocks ?? "?"}개${
-      blueprint.tags?.length ? ` · ${blueprint.tags.join(", ")}` : ""
-    }`;
-
-    const actions = document.createElement("div");
-    actions.className = "btn-row";
-
-    const pasteButton = document.createElement("button");
-    pasteButton.className = "btn btn-sm btn-primary";
-    pasteButton.textContent = "붙여넣기";
-    pasteButton.addEventListener("click", async () => {
-      blueprintStatus.textContent = "붙여넣기 작업 생성 중...";
-      const { response, payload } = await createPasteJob(blueprint.id);
-      if (!response.ok) {
-        blueprintStatus.textContent = `붙여넣기 실패 (${response.status})`;
-        return;
-      }
-      blueprintStatus.textContent = "붙여넣기 작업이 생성됐습니다.";
-      recordAction(payload.jobId, "create", `블루프린트 붙여넣기: ${blueprint.name ?? blueprint.id}`);
-      await loadEditJobs();
-    });
-
-    actions.appendChild(pasteButton);
-
-    card.appendChild(title);
-    card.appendChild(meta);
-    card.appendChild(actions);
-    blueprintList.appendChild(card);
-  });
-};
-
-const loadBlueprints = async () => {
-  try {
-    const { response, payload } = await fetchBlueprints();
-    if (!response.ok) {
-      blueprintStatus.textContent = `목록 로드 실패 (${response.status})`;
-      return;
-    }
-    renderBlueprints(payload);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    blueprintStatus.textContent = `목록 로드 실패: ${message}`;
-  }
-};
-
-const uploadBlueprint = async () => {
-  const file = blueprintFileInput.files?.[0];
-  if (!file) {
-    blueprintStatus.textContent = "schem 파일을 선택해 주세요.";
-    return;
-  }
-  const name = blueprintNameInput.value.trim() || file.name.replace(".schem", "");
-  const tags = blueprintTagsInput.value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-
-  blueprintStatus.textContent = "등록 중...";
-  try {
-    const { response, payload } = await createBlueprint({
-      name,
-      format: "schem",
-      size: [0, 0, 0],
-      blocks: 0,
-      tags,
-      createdBy: "ui",
-      filename: file.name,
-      bytes: file.size,
-    });
-    if (!response.ok) {
-      blueprintStatus.textContent = `등록 실패 (${response.status})`;
-      return;
-    }
-    blueprintStatus.textContent = `등록 완료: ${payload.name}`;
-    await loadBlueprints();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    blueprintStatus.textContent = `등록 실패: ${message}`;
-  }
-};
-
-// ---- 감사 로그 ----
-
-const fetchAuditEntries = async (filters) => {
-  const params = new URLSearchParams();
-  if (filters.userId) params.set("userId", filters.userId);
-  if (filters.worldId) params.set("worldId", filters.worldId);
-  if (filters.commandType) params.set("commandType", filters.commandType);
-  if (filters.since) params.set("since", filters.since);
-  if (filters.until) params.set("until", filters.until);
-  if (typeof filters.limit === "number" && !Number.isNaN(filters.limit)) {
-    params.set("limit", String(filters.limit));
-  }
-  if (filters.cursor) params.set("cursor", filters.cursor);
-  const query = params.toString();
-  const response = await fetch(`audit${query ? `?${query}` : ""}`);
-  const payload = await response.json();
-  return { response, payload };
-};
-
-const renderAuditEntries = (entries, mode = "replace") => {
-  if (mode === "replace") {
-    auditList.innerHTML = "";
-  }
-  if (entries.length === 0) {
-    if (mode === "replace") {
-      auditList.innerHTML = '<p class="empty-note">감사 로그가 없습니다.</p>';
-    }
-    return;
-  }
-  entries.forEach((entry) => {
-    const item = document.createElement("li");
-    const summary = document.createElement("strong");
-    summary.textContent = `${entry.commandType} · ${entry.worldId}`;
-
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = `${entry.userId} · ${entry.estimatedBlocks}블록 · ${new Date(entry.createdAt).toLocaleString()}`;
-
-    item.appendChild(summary);
-    item.appendChild(meta);
-    auditList.appendChild(item);
-  });
-};
-
-const loadAuditEntries = async (mode = "replace") => {
-  if (mode === "replace") {
-    auditCursor = null;
-  }
-  loadMoreAuditButton.disabled = true;
-  loadMoreAuditButton.textContent = "불러오는 중...";
-  auditStatus.textContent = "불러오는 중...";
-  try {
-    const { response, payload } = await fetchAuditEntries({
-      userId: auditUserIdInput.value.trim() || undefined,
-      worldId: auditWorldIdInput.value.trim() || undefined,
-      commandType: auditCommandTypeInput.value.trim() || undefined,
-      since: auditSinceInput.value ? new Date(auditSinceInput.value).toISOString() : undefined,
-      until: auditUntilInput.value ? new Date(auditUntilInput.value).toISOString() : undefined,
-      limit: auditLimitInput.value ? Number(auditLimitInput.value) : undefined,
-      cursor: mode === "append" ? auditCursor : undefined,
-    });
-    if (!response.ok) {
-      auditStatus.textContent = `로드 실패 (${response.status})`;
-      return;
-    }
-    const items = Array.isArray(payload) ? payload : payload.items ?? [];
-    auditCursor = Array.isArray(payload) ? null : payload.nextCursor ?? null;
-    auditStatus.textContent = `${items.length}건`;
-    renderAuditEntries(items, mode);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "알 수 없는 오류";
-    auditStatus.textContent = `로드 실패: ${message}`;
-  } finally {
-    loadMoreAuditButton.textContent = loadMoreAuditLabel;
-    loadMoreAuditButton.disabled = !auditCursor;
   }
 };
 
@@ -760,6 +301,22 @@ const appendConsoleLine = (line) => {
   }
 };
 
+// 명령어 탭에서 "전송"으로 만든 명령의 실제 실행 결과(성공/에러 메시지)는 이 콘솔 스트림
+// 라인으로 나온다 — 새 연결을 또 만들지 않고 같은 스트림을 명령어 탭 로그에도 그대로
+// 흘려보낸다.
+// 콘솔 전체 트래픽을 그대로 미러링하다 보니 consoleLog와 달리 여기는 오래 열어두면
+// 계속 불어난다 — 최근 N줄만 남겨서 무한정 커지지 않게 한다.
+const COMMAND_RESULT_LOG_MAX_LINES = 500;
+const commandResultLines = [];
+const appendCommandResultLine = (line) => {
+  commandResultLines.push(cleanConsoleLine(line));
+  if (commandResultLines.length > COMMAND_RESULT_LOG_MAX_LINES) {
+    commandResultLines.splice(0, commandResultLines.length - COMMAND_RESULT_LOG_MAX_LINES);
+  }
+  commandResultLog.textContent = commandResultLines.join("\n");
+  commandResultLog.scrollTop = commandResultLog.scrollHeight;
+};
+
 // 브라우저 EventSource는 커스텀 헤더를 못 보내므로 항상 백엔드(같은 오리진)로만
 // 연결한다 — 브릿지 토큰은 백엔드가 프록시하면서 실어 보낸다. 연결이 끊기면
 // EventSource가 알아서 재시도한다(백엔드/브릿지 재기동 후 자동 복구).
@@ -775,6 +332,7 @@ const connectConsoleStream = (bridgeUrl) => {
   };
   es.onmessage = (event) => {
     appendConsoleLine(event.data);
+    appendCommandResultLine(event.data);
   };
   es.onerror = () => {
     consoleStatus.textContent = "연결 끊김 (재시도 중...)";
@@ -814,21 +372,184 @@ consoleScrollBottomButton.addEventListener("click", () => {
 });
 mapFocusReleaseButton.addEventListener("click", () => mapInstance.clearLock());
 
+// ---- 명령어 (GUI 빌더) ----
+
+// playerText(오프라인 계정도 가능한 대상)용 자동완성 목록 — 탭 전체가 공유한다.
+const onlinePlayersDatalist = document.createElement("datalist");
+onlinePlayersDatalist.id = "onlinePlayersDatalist";
+document.body.appendChild(onlinePlayersDatalist);
+
+const playerSelectElements = []; // "player" 타입 인자의 <select> 전체 — 플레이어 목록 갱신 시 같이 채운다.
+
+const buildArgField = (command, arg) => {
+  const field = document.createElement("div");
+  field.className = "field";
+  const label = document.createElement("label");
+  label.textContent = arg.label;
+  field.appendChild(label);
+
+  if (arg.type === "player") {
+    // 접속자가 있어도 맨 앞 옵션은 항상 빈 플레이스홀더 — 그래야 브라우저가 알파벳
+    // 순으로 첫 플레이어를 "무선택 상태"로 자동 지정해버리는 일이 없다(킥/밴/처치처럼
+    // 위험한 명령에서 확인 없이 엉뚱한 대상에게 나가면 안 되니까).
+    const select = document.createElement("select");
+    select.dataset.argKey = arg.key;
+    select.innerHTML = '<option value="">(접속한 플레이어 없음)</option>';
+    playerSelectElements.push(select);
+    field.appendChild(select);
+    return { field, getValue: () => select.value };
+  }
+
+  if (arg.type === "playerText") {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("list", onlinePlayersDatalist.id);
+    input.placeholder = "플레이어 이름";
+    input.autocomplete = "off";
+    field.appendChild(input);
+    return { field, getValue: () => input.value.trim() };
+  }
+
+  if (arg.type === "select") {
+    const select = document.createElement("select");
+    arg.options.forEach((opt) => {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      select.appendChild(option);
+    });
+    field.appendChild(select);
+    return { field, getValue: () => select.value };
+  }
+
+  if (arg.type === "number") {
+    const input = document.createElement("input");
+    input.type = "number";
+    if (arg.min !== undefined) input.min = String(arg.min);
+    if (arg.max !== undefined) input.max = String(arg.max);
+    input.value = String(arg.default ?? 0);
+    field.appendChild(input);
+    return { field, getValue: () => input.value };
+  }
+
+  // "text" — 공지 문구처럼 타이핑이 꼭 필요한 값만 여기로 온다.
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = arg.placeholder ?? "";
+  field.appendChild(input);
+  return { field, getValue: () => input.value.trim() };
+};
+
+const buildCommandCard = (command) => {
+  const card = document.createElement("div");
+  card.className = "item-card command-card";
+  card.dataset.searchText = `${command.label} ${command.syntax} ${command.id}`.toLowerCase();
+
+  const title = document.createElement("strong");
+  title.textContent = command.label;
+  const syntax = document.createElement("span");
+  syntax.className = "meta";
+  syntax.textContent = command.syntax;
+  title.appendChild(document.createElement("br"));
+  title.appendChild(syntax);
+  card.appendChild(title);
+
+  const getters = command.args.map((arg) => {
+    const { field, getValue } = buildArgField(command, arg);
+    card.appendChild(field);
+    return { key: arg.key, getValue, optional: Boolean(arg.optional) };
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "btn-row";
+  const sendButton = document.createElement("button");
+  sendButton.className = `btn btn-sm ${command.danger ? "btn-danger" : "btn-primary"}`;
+  sendButton.textContent = "전송";
+  sendButton.addEventListener("click", () => {
+    const bridgeUrl = bridgeInput.value.trim();
+    if (!bridgeUrl) {
+      appendCommandResultLine("[오류] 먼저 서버에 연결해 주세요.");
+      return;
+    }
+    const values = {};
+    for (const getter of getters) {
+      const value = getter.getValue();
+      if (!value && !getter.optional) {
+        appendCommandResultLine(`[오류] "${command.label}" 값이 비어 있습니다.`);
+        return;
+      }
+      values[getter.key] = value;
+    }
+    if (command.confirmMessage && !window.confirm(command.confirmMessage)) {
+      return;
+    }
+    const builtCommand = command.build(values);
+    appendCommandResultLine(`> ${builtCommand}`);
+    sendConsoleCommand(bridgeUrl, builtCommand);
+  });
+  actions.appendChild(sendButton);
+  card.appendChild(actions);
+
+  return card;
+};
+
+const renderCommandCatalog = () => {
+  COMMAND_CATEGORIES.forEach((category) => {
+    const group = document.getElementById(`commandGroup-${category.id}`);
+    COMMANDS.filter((command) => command.category === category.id).forEach((command) => {
+      group.appendChild(buildCommandCard(command));
+    });
+  });
+};
+
+// 300ms 스냅샷마다 매번 <select>를 통째로 새로 만들면 열려 있던 드롭다운이 깜빡이니,
+// 옵션 목록이 실제로 바뀌었을 때만 갱신한다.
+let lastPlayerOptionsKey = "";
+const updateCommandPlayerOptions = (players) => {
+  const names = players.map((p) => p.name).sort();
+  const key = names.join(",");
+  if (key === lastPlayerOptionsKey) return;
+  lastPlayerOptionsKey = key;
+
+  onlinePlayersDatalist.innerHTML = names.map((name) => `<option value="${name}"></option>`).join("");
+
+  playerSelectElements.forEach((select) => {
+    const previous = select.value;
+    const placeholder =
+      names.length === 0 ? "(접속한 플레이어 없음)" : "-- 플레이어 선택 --";
+    select.innerHTML =
+      `<option value="">${placeholder}</option>` +
+      names.map((name) => `<option value="${name}">${name}</option>`).join("");
+    if (names.includes(previous)) {
+      select.value = previous;
+    }
+  });
+};
+
+commandSearchInput.addEventListener("input", () => {
+  const query = commandSearchInput.value.trim().toLowerCase();
+  COMMAND_CATEGORIES.forEach((category) => {
+    const group = document.getElementById(`commandGroup-${category.id}`);
+    let visibleCount = 0;
+    group.querySelectorAll(".command-card").forEach((card) => {
+      const matches = !query || card.dataset.searchText.includes(query);
+      card.style.display = matches ? "" : "none";
+      if (matches) visibleCount += 1;
+    });
+    // 검색어에 매칭되는 카드가 하나도 없는 카테고리는 빈 제목만 남지 않게 통째로 숨긴다.
+    document.getElementById(`commandCategory-${category.id}`).style.display =
+      visibleCount === 0 ? "none" : "";
+  });
+});
+
+renderCommandCatalog();
+
 // ---- 이벤트 바인딩 ----
 
 testButton.addEventListener("click", testConnection);
 showPlayersToggle.addEventListener("change", () => mapInstance.setEntityVisibility("players", showPlayersToggle.checked));
 showMobsToggle.addEventListener("change", () => mapInstance.setEntityVisibility("mobs", showMobsToggle.checked));
 showItemsToggle.addEventListener("change", () => mapInstance.setEntityVisibility("items", showItemsToggle.checked));
-refreshJobsButton.addEventListener("click", loadEditJobs);
-undoButton.addEventListener("click", runUndo);
-redoButton.addEventListener("click", runRedo);
-refreshBlueprintsButton.addEventListener("click", loadBlueprints);
-uploadBlueprintButton.addEventListener("click", uploadBlueprint);
-refreshAuditButton.addEventListener("click", () => loadAuditEntries());
-loadMoreAuditButton.addEventListener("click", () => loadAuditEntries("append"));
 
 renderRecents();
-renderHistory();
-loadMoreAuditButton.disabled = true;
 await restoreSession();

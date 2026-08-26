@@ -2,7 +2,6 @@ package net.webcraftops.bridgepaper;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import net.webcraftops.bridgepaper.handlers.CommandHandler;
 import net.webcraftops.bridgepaper.handlers.ConsoleCommandHandler;
 import net.webcraftops.bridgepaper.handlers.InfoHandler;
 import net.webcraftops.bridgepaper.handlers.MapTileHandler;
@@ -38,7 +37,6 @@ public final class BridgeHttpServer {
             new SseStreamHandler(entitySnapshotBroadcaster)
         );
         server.createContext("/bridge/world/", wrap(token, worldRoute)); // worldId는 핸들러가 경로에서 직접 파싱
-        server.createContext("/bridge/command", wrap(token, new CommandHandler(executor)));
         server.createContext("/bridge/console/stream", wrap(token, new SseStreamHandler(consoleBroadcaster)));
         server.createContext("/bridge/console/command", wrap(token, new ConsoleCommandHandler(executor)));
         server.createContext("/bridge/players/", wrap(token, new PlayerHeadHandler()));

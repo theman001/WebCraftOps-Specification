@@ -189,21 +189,6 @@
         font-size: 0.85rem;
       }
 
-      details.advanced {
-        margin-top: var(--space-3);
-        color: var(--text-muted);
-        font-size: 0.85rem;
-      }
-
-      details.advanced summary {
-        cursor: pointer;
-        font-weight: 600;
-      }
-
-      details.advanced .field {
-        margin-top: var(--space-3);
-      }
-
       .recent-list {
         list-style: none;
         padding: 0;
@@ -289,86 +274,19 @@
         margin-bottom: 0.2rem;
       }
 
-      .badge {
-        display: inline-block;
-        padding: 0.15rem 0.55rem;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 700;
-      }
-
-      .badge-queued {
-        background: rgba(148, 163, 184, 0.2);
-        color: var(--text-muted);
-      }
-      .badge-running {
-        background: rgba(56, 189, 248, 0.2);
-        color: var(--accent);
-      }
-      .badge-paused {
-        background: rgba(250, 204, 21, 0.2);
-        color: var(--warning);
-      }
-      .badge-completed {
-        background: rgba(52, 211, 153, 0.2);
-        color: var(--success);
-      }
-      .badge-failed,
-      .badge-canceled {
-        background: rgba(248, 113, 113, 0.2);
-        color: var(--danger);
-      }
-
-      .progress-track {
-        height: 6px;
-        border-radius: 999px;
-        background: var(--border);
-        overflow: hidden;
-        margin: 0.4rem 0;
-      }
-
-      .progress-fill {
-        height: 100%;
-        background: var(--accent);
-      }
-
       .empty-note {
         color: var(--text-faint);
         font-size: 0.85rem;
       }
 
-      .history-list {
-        list-style: none;
-        padding: 0;
-        margin: var(--space-3) 0 0;
+      .command-card .field {
+        margin-bottom: 0.5rem;
       }
 
-      .history-list li {
-        padding: 0.45rem 0;
-        border-bottom: 1px solid var(--border);
-        font-size: 0.82rem;
-        color: var(--text-muted);
-      }
-
-      .audit-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-
-      .audit-list li {
-        padding: 0.6rem 0;
-        border-bottom: 1px solid var(--border);
-      }
-
-      .audit-list strong {
-        display: block;
-        font-size: 0.88rem;
-      }
-
-      .audit-list .meta {
-        color: var(--text-muted);
-        font-size: 0.78rem;
+      .command-card select,
+      .command-card input {
+        font-size: 0.85rem;
+        padding: 0.45rem 0.6rem;
       }
 
       .console-log {
@@ -404,8 +322,7 @@
         <nav class="tabs" id="tabNav">
           <button class="tab-btn active" data-tab="connect">연결</button>
           <button class="tab-btn" data-tab="map" disabled>지도</button>
-          <button class="tab-btn" data-tab="blueprints" disabled>블루프린트</button>
-          <button class="tab-btn" data-tab="jobs" disabled>작업 &amp; 로그</button>
+          <button class="tab-btn" data-tab="commands" disabled>명령어</button>
           <button class="tab-btn" data-tab="console" disabled>콘솔</button>
         </nav>
       </header>
@@ -461,90 +378,30 @@
           </div>
         </section>
 
-        <section class="tab-panel" data-panel="blueprints" hidden>
+        <section class="tab-panel" data-panel="commands" hidden>
           <div class="card">
-            <h2>블루프린트 업로드</h2>
-            <div class="field">
-              <label for="blueprintFile">Schematic 파일</label>
-              <input id="blueprintFile" type="file" accept=".schem" />
+            <h2>명령어</h2>
+            <p class="hint">
+              값을 고르고(플레이어·옵션은 드롭다운) <strong>전송</strong>을 누르면 완성된
+              명령어 한 줄을 서버로 보냅니다. 타이핑이 꼭 필요한 항목(공지 문구 등)만 직접
+              입력하면 됩니다. 실행 결과는 아래 로그와 콘솔 탭에서 확인할 수 있습니다.
+            </p>
+            <div class="field" style="margin-bottom: 0">
+              <label for="commandSearchInput">명령어 찾기</label>
+              <input id="commandSearchInput" type="text" placeholder="예: tp, 순간이동, 날씨" autocomplete="off" />
             </div>
-            <div class="field">
-              <label for="blueprintName">이름</label>
-              <input id="blueprintName" type="text" placeholder="castle_v1" />
-            </div>
-            <div class="field">
-              <label for="blueprintTags">태그 (쉼표 구분)</label>
-              <input id="blueprintTags" type="text" placeholder="castle, medieval" />
-            </div>
-            <div class="btn-row">
-              <button id="uploadBlueprintButton" class="btn btn-primary">업로드</button>
-            </div>
-            <p class="status-text" id="blueprintStatus">파일을 선택하면 등록합니다.</p>
+          </div>
+          <div class="card" id="commandCategory-player">
+            <h2>플레이어</h2>
+            <div class="grid-list" id="commandGroup-player"></div>
+          </div>
+          <div class="card" id="commandCategory-server">
+            <h2>서버</h2>
+            <div class="grid-list" id="commandGroup-server"></div>
           </div>
           <div class="card">
-            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
-              <h2 style="margin: 0; flex: 1">블루프린트 목록</h2>
-              <button id="refreshBlueprintsButton" class="btn btn-sm">새로고침</button>
-            </div>
-            <div class="grid-list" id="blueprintList"></div>
-          </div>
-        </section>
-
-        <section class="tab-panel" data-panel="jobs" hidden>
-          <div class="card">
-            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
-              <h2 style="margin: 0; flex: 1">작업 목록</h2>
-              <button id="refreshJobsButton" class="btn btn-sm">새로고침</button>
-            </div>
-            <p class="status-text" id="editJobStatus"></p>
-            <div class="grid-list" id="editJobList"></div>
-          </div>
-          <div class="card">
-            <h2>되돌리기 / 다시 실행</h2>
-            <div class="btn-row" style="margin-top: 0">
-              <button id="undoButton" class="btn">Undo</button>
-              <button id="redoButton" class="btn">Redo</button>
-            </div>
-            <p class="status-text" id="historyStatus">기록이 없습니다.</p>
-            <ul class="history-list" id="historyList"></ul>
-          </div>
-          <div class="card">
-            <div class="btn-row" style="margin-top: 0; margin-bottom: var(--space-3)">
-              <h2 style="margin: 0; flex: 1">감사 로그</h2>
-              <button id="refreshAuditButton" class="btn btn-sm">새로고침</button>
-            </div>
-            <details class="advanced">
-              <summary>고급 필터</summary>
-              <div class="field">
-                <label for="auditUserId">사용자 ID</label>
-                <input id="auditUserId" type="text" placeholder="mc_uuid" />
-              </div>
-              <div class="field">
-                <label for="auditWorldId">월드 ID</label>
-                <input id="auditWorldId" type="text" placeholder="overworld" />
-              </div>
-              <div class="field">
-                <label for="auditCommandType">커맨드 타입</label>
-                <input id="auditCommandType" type="text" placeholder="setBlock" />
-              </div>
-              <div class="field">
-                <label for="auditSince">시작 시간</label>
-                <input id="auditSince" type="datetime-local" />
-              </div>
-              <div class="field">
-                <label for="auditUntil">종료 시간</label>
-                <input id="auditUntil" type="datetime-local" />
-              </div>
-              <div class="field">
-                <label for="auditLimit">조회 개수</label>
-                <input id="auditLimit" type="number" min="1" max="500" placeholder="100" />
-              </div>
-            </details>
-            <p class="status-text" id="auditStatus">조회 대기 중입니다.</p>
-            <ul class="audit-list" id="auditList"></ul>
-            <div class="btn-row">
-              <button id="loadMoreAuditButton" class="btn btn-sm" disabled>더 보기</button>
-            </div>
+            <h2 style="margin-bottom: var(--space-3)">실행 결과</h2>
+            <pre class="console-log" id="commandResultLog" style="height: 200px"></pre>
           </div>
         </section>
 
