@@ -376,6 +376,33 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/spawn") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const result = await proxyBridgeRequest(bridgeUrl, "/bridge/world/overworld/spawn");
+    sendJson(res, result.ok ? 200 : result.status || 502, result.ok ? result.payload : result);
+    return;
+  }
+
+  if (req.method === "GET" && pathname === "/bridge/world/overworld/heightmap") {
+    const bridgeUrl = url.searchParams.get("bridgeUrl");
+    const x = url.searchParams.get("x");
+    const z = url.searchParams.get("z");
+    if (!bridgeUrl || x === null || z === null) {
+      sendJson(res, 400, { message: "bridgeUrl, x, z 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const result = await proxyBridgeRequest(
+      bridgeUrl,
+      `/bridge/world/overworld/heightmap?${new URLSearchParams({ x, z }).toString()}`,
+    );
+    sendJson(res, result.ok ? 200 : result.status || 502, result.ok ? result.payload : result);
+    return;
+  }
+
   if (req.method === "GET" && pathname.startsWith("/bridge/players/") && pathname.endsWith("/head")) {
     const bridgeUrl = url.searchParams.get("bridgeUrl");
     if (!bridgeUrl) {

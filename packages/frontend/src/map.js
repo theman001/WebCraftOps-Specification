@@ -21,7 +21,7 @@ const CLICK_DRAG_THRESHOLD = 4; // 이 이하로 움직이면 드래그가 아�
 // 선형 보간해서 그린다(전송 빈도는 그대로 두고, 매 프레임 그리는 화면 쪽만 부드럽게).
 const SNAPSHOT_INTERVAL_MS = 300;
 
-export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) => {
+export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, onSpawnPoint, onPlayerDropTeleport }) => {
   const ctx = canvas.getContext("2d");
 
   let currentBridgeUrl = null;
@@ -33,9 +33,14 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
   let dragging = false;
   let dragStart = null;
   let dragMoved = 0;
+  // 드래그가 플레이어 마커 위에서 시작됐으면 여기 기록 — CLICK_DRAG_THRESHOLD를 넘겨서
+  // "진짜 드래그"가 되면 지도를 패닝하는 대신 그 플레이어를 드롭 지점으로 텔레포트시키는
+  // 모드로 취급한다(임계값 이하로 끝나면 기존처럼 그냥 클릭=포커스 고정).
+  let playerDragTarget = null; // {x,y,wx,wz,category,id,name} — 드래그 시작 시점의 히트 정보
   let syncTimer = null;
   let eventSource = null;
   let entityEventSource = null;
+  let spawnPoint = null; // {x,y,z} | null
 
   const entityVisibility = { players: true, mobs: true, items: true };
   let latestEntities = { players: [], mobs: [], items: [] };
@@ -221,12 +226,82 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
         });
       }
     }
-    if (hoverPoint) {
-      const hovered = hitTestMarker(hoverPoint.sx, hoverPoint.sy);
-      if (hovered) {
-        drawTooltip(hovered);
-      }
-    }
+  };
+
+  // 스폰 포인트를 지도에 핀으로 표시 — 뾰족한 끝이 실제 좌표를 정확히 가리킨다. 락온 링과
+  // 헷갈리지 않게 원이 아니라 핀 실루엣으로 구분(--gold로 통일해 톤앤매너는 유지).
+  const drawSpawnPoint = () => {
+    if (!spawnPoint) return;
+    const { x, y } = worldToScreen(spawnPoint.x, spawnPoint.z);
+    const h = 20;
+    const w = 13;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x - w / 2, y - h * 0.6, x, y - h);
+    ctx.quadraticCurveTo(x + w / 2, y - h * 0.6, x, y);
+    ctx.closePath();
+    ctx.fillStyle = "#e0b64a"; // --gold
+    ctx.strokeStyle = "#070708"; // --bevel-lo
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y - h * 0.62, 3, 0, Math.PI * 2);
+    ctx.fillStyle = "#070708";
+    ctx.fill();
+    ctx.restore();
+    markerHitTargets.push({
+      x,
+      y: y - h * 0.62,
+      radius: 9,
+      wx: spawnPoint.x,
+      wz: spawnPoint.z,
+      category: "spawn",
+      id: "spawn",
+      name: "스폰 포인트",
+    });
+  };
+
+  // 화면 고정 N/E/S/W — 월드 좌표가 아니라 캔버스 가장자리에 고정한다.
+  // worldToScreen 규약: 북(Z-)=위, 남(Z+)=아래, 동(X+)=오른쪽, 서(X-)=왼쪽.
+  const drawCompass = () => {
+    const rect = canvas.getBoundingClientRect();
+    const pad = 16;
+    ctx.save();
+    ctx.font = "bold 12px 'JetBrains Mono', monospace";
+    ctx.fillStyle = "#e0b64a"; // --gold
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("N", rect.width / 2, pad);
+    ctx.fillText("S", rect.width / 2, rect.height - pad);
+    ctx.fillText("E", rect.width - pad, rect.height / 2);
+    ctx.fillText("W", pad, rect.height / 2);
+    ctx.restore();
+  };
+
+  // 플레이어 마커를 드래그하는 동안 놓을 위치를 안내(점선 + 조준선). 실제 텔레포트 실행은
+  // mouseup에서 onPlayerDropTeleport 콜백으로 위임 — 여긴 시각 피드백만 담당한다.
+  const drawTeleportDrag = () => {
+    if (!playerDragTarget || !hoverPoint || dragMoved < CLICK_DRAG_THRESHOLD) return;
+    const { sx, sy } = hoverPoint;
+    ctx.save();
+    ctx.strokeStyle = "#e0b64a"; // --gold
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(playerDragTarget.x, playerDragTarget.y);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#6bc72e"; // --xp
+    ctx.beginPath();
+    ctx.moveTo(sx - 8, sy);
+    ctx.lineTo(sx + 8, sy);
+    ctx.moveTo(sx, sy - 8);
+    ctx.lineTo(sx, sy + 8);
+    ctx.stroke();
+    ctx.restore();
   };
 
   const draw = () => {
@@ -243,6 +318,15 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
       ctx.drawImage(tile.img, x, y, size, size);
     }
     drawEntities();
+    drawSpawnPoint();
+    drawTeleportDrag();
+    drawCompass();
+    if (hoverPoint) {
+      const hovered = hitTestMarker(hoverPoint.sx, hoverPoint.sy);
+      if (hovered) {
+        drawTooltip(hovered);
+      }
+    }
   };
 
   const resize = () => {
@@ -342,6 +426,11 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
   };
 
   canvas.addEventListener("mousedown", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const hit = hitTestMarker(event.clientX - rect.left, event.clientY - rect.top);
+    // 플레이어 마커 위에서 시작한 드래그만 "놓은 지점으로 텔레포트" 모드로 취급한다 —
+    // 임계값 이하로 끝나면 mouseup에서 그냥 기존 클릭=포커스 고정으로 처리된다.
+    playerDragTarget = hit && hit.category === "players" ? hit : null;
     dragging = true;
     dragMoved = 0;
     dragStart = { x: event.clientX, y: event.clientY, originX, originZ };
@@ -358,6 +447,12 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     if (wasBelowThreshold && dragMoved >= CLICK_DRAG_THRESHOLD) {
       clearLock();
     }
+    if (playerDragTarget) {
+      // 플레이어를 드래그하는 중 — 지도는 고정한 채 놓을 위치 안내만 다시 그린다(hoverPoint는
+      // 아래쪽의 hover 전용 mousemove 리스너가 계속 최신 커서 좌표로 갱신해준다).
+      draw();
+      return;
+    }
     originX = dragStart.originX - dx / scale;
     originZ = dragStart.originZ - dy / scale;
     draw();
@@ -369,7 +464,19 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     canvas.style.cursor = "grab";
     if (dragMoved < CLICK_DRAG_THRESHOLD) {
       handleClick(event);
+    } else if (playerDragTarget) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = event.clientX - rect.left;
+      const sy = event.clientY - rect.top;
+      // 지도 밖(콘솔 패널, 유저 목록 등)에서 손을 뗀 건 "취소"로 취급 — 캔버스 밖 좌표까지
+      // 그대로 world로 환산해 실제 tp를 쏘면 엉뚱한 곳(바다·공허 등)으로 보낼 수 있다.
+      if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
+        const { x: wx, z: wz } = screenToWorld(sx, sy);
+        onPlayerDropTeleport?.(playerDragTarget.name, wx, wz);
+      }
     }
+    playerDragTarget = null;
+    draw();
   });
 
   // 실제로 드래그하지 않은(제자리) 클릭만 마커 포커스로 취급 — 지도를 드래그하다가
@@ -377,9 +484,16 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
   const handleClick = (event) => {
     const rect = canvas.getBoundingClientRect();
     const target = hitTestMarker(event.clientX - rect.left, event.clientY - rect.top);
-    if (target) {
-      lockOnto(target.category, target.id, target.name);
+    if (!target) return;
+    if (target.category === "spawn") {
+      // 스폰 포인트는 고정된 지점이라 lockOnto(엔티티 추적용)로는 못 다룬다 — 그냥 한 번 이동.
+      clearLock();
+      centerOn(target.wx, target.wz);
+      draw();
+      scheduleSync();
+      return;
     }
+    lockOnto(target.category, target.id, target.name);
   };
 
   // 마커에 커서를 올리면 이름 툴팁을 보여준다(아이템/이름 없는 몹처럼 지도에 상시
@@ -469,6 +583,22 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     entityEventSource = es;
   };
 
+  // 한 번만 조회하면 되는 정적 지점 — 매 스냅샷마다 올 필요 없어 별도 fetch로 처리.
+  const fetchSpawnPoint = async (bridgeUrl) => {
+    try {
+      const res = await fetch(`bridge/world/overworld/spawn?bridgeUrl=${encodeURIComponent(bridgeUrl)}`);
+      // 응답이 오는 사이 다른 서버로 전환됐으면(start()가 다시 호출됨) 낡은 결과라 버린다 —
+      // 아니면 방금 연결한 새 서버 화면에 이전 서버의 스폰 좌표가 잘못 표시될 수 있다.
+      if (bridgeUrl !== currentBridgeUrl) return;
+      if (!res.ok) return;
+      spawnPoint = await res.json();
+      onSpawnPoint?.(spawnPoint);
+      draw();
+    } catch (error) {
+      console.warn("[Map] 스폰 포인트 조회 실패", error);
+    }
+  };
+
   const setEntityVisibility = (category, visible) => {
     entityVisibility[category] = visible;
     draw();
@@ -540,10 +670,12 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange }) 
     lockedTarget = null;
     onFocusChange?.(null);
     statusEl.textContent = "지도 불러오는 중...";
+    spawnPoint = null;
     resize();
     syncTiles();
     connectEvents(bridgeUrl);
     connectEntities(bridgeUrl);
+    fetchSpawnPoint(bridgeUrl);
     if (animationFrameId === null) {
       animationFrameId = requestAnimationFrame(tick);
     }

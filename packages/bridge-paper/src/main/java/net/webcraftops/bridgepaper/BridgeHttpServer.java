@@ -3,10 +3,12 @@ package net.webcraftops.bridgepaper;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import net.webcraftops.bridgepaper.handlers.ConsoleCommandHandler;
+import net.webcraftops.bridgepaper.handlers.HeightmapHandler;
 import net.webcraftops.bridgepaper.handlers.InfoHandler;
 import net.webcraftops.bridgepaper.handlers.MapTileHandler;
 import net.webcraftops.bridgepaper.handlers.PlayerHeadHandler;
 import net.webcraftops.bridgepaper.handlers.RegistryHandler;
+import net.webcraftops.bridgepaper.handlers.SpawnPointHandler;
 import net.webcraftops.bridgepaper.handlers.SseStreamHandler;
 import net.webcraftops.bridgepaper.handlers.WorldRouteHandler;
 
@@ -34,7 +36,9 @@ public final class BridgeHttpServer {
         WorldRouteHandler worldRoute = new WorldRouteHandler(
             new MapTileHandler(executor, mapTileRenderer),
             new SseStreamHandler(mapEventsBroadcaster),
-            new SseStreamHandler(entitySnapshotBroadcaster)
+            new SseStreamHandler(entitySnapshotBroadcaster),
+            new SpawnPointHandler(executor),
+            new HeightmapHandler(executor)
         );
         server.createContext("/bridge/world/", wrap(token, worldRoute)); // worldId는 핸들러가 경로에서 직접 파싱
         server.createContext("/bridge/console/stream", wrap(token, new SseStreamHandler(consoleBroadcaster)));

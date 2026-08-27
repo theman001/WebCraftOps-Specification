@@ -18,11 +18,21 @@ public final class WorldRouteHandler implements HttpHandler {
     private final HttpHandler mapTileHandler;
     private final HttpHandler mapEventsHandler;
     private final HttpHandler entityStreamHandler;
+    private final HttpHandler spawnPointHandler;
+    private final HttpHandler heightmapHandler;
 
-    public WorldRouteHandler(HttpHandler mapTileHandler, HttpHandler mapEventsHandler, HttpHandler entityStreamHandler) {
+    public WorldRouteHandler(
+            HttpHandler mapTileHandler,
+            HttpHandler mapEventsHandler,
+            HttpHandler entityStreamHandler,
+            HttpHandler spawnPointHandler,
+            HttpHandler heightmapHandler
+    ) {
         this.mapTileHandler = mapTileHandler;
         this.mapEventsHandler = mapEventsHandler;
         this.entityStreamHandler = entityStreamHandler;
+        this.spawnPointHandler = spawnPointHandler;
+        this.heightmapHandler = heightmapHandler;
     }
 
     @Override
@@ -38,6 +48,14 @@ public final class WorldRouteHandler implements HttpHandler {
         }
         if (path.endsWith("/entities/stream")) {
             entityStreamHandler.handle(exchange);
+            return;
+        }
+        if (path.endsWith("/spawn")) {
+            spawnPointHandler.handle(exchange);
+            return;
+        }
+        if (path.endsWith("/heightmap")) {
+            heightmapHandler.handle(exchange);
             return;
         }
         LOGGER.warning("[WorldRoute] 매칭되는 핸들러 없음: " + path);

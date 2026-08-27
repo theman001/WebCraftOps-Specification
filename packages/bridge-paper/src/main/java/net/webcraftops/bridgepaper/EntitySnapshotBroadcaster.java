@@ -83,6 +83,7 @@ public final class EntitySnapshotBroadcaster {
                 players.append("{\"uuid\":\"").append(player.getUniqueId())
                     .append("\",\"name\":\"").append(Json.escape(player.getName()))
                     .append("\",\"x\":").append(player.getLocation().getX())
+                    .append(",\"y\":").append(player.getLocation().getY())
                     .append(",\"z\":").append(player.getLocation().getZ())
                     .append(",\"yaw\":").append(player.getLocation().getYaw())
                     .append("}");

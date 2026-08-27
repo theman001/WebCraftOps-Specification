@@ -145,6 +145,19 @@ export const COMMANDS = [
     build: (v) => `tp ${v.target} ${v.destination}`,
   },
   {
+    id: "tp-coords",
+    category: "player",
+    label: "좌표로 텔레포트",
+    syntax: "/tp <대상> <x> <y> <z>",
+    args: [
+      { type: "player", key: "target", label: "이동할 플레이어" },
+      { type: "number", key: "x", label: "X 좌표", default: 0, min: -30000000, max: 30000000 },
+      { type: "number", key: "y", label: "Y 좌표", default: 64, min: -64, max: 320 },
+      { type: "number", key: "z", label: "Z 좌표", default: 0, min: -30000000, max: 30000000 },
+    ],
+    build: (v) => `tp ${v.target} ${v.x} ${v.y} ${v.z}`,
+  },
+  {
     id: "gamemode",
     category: "player",
     label: "게임모드 변경",

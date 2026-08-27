@@ -19,6 +19,7 @@ const mapPlayerList = document.getElementById("mapPlayerList");
 const mapFocusRow = document.getElementById("mapFocusRow");
 const mapFocusStatus = document.getElementById("mapFocusStatus");
 const mapFocusReleaseButton = document.getElementById("mapFocusReleaseButton");
+const mapSpawnStatus = document.getElementById("mapSpawnStatus");
 
 const commandSearchInput = document.getElementById("commandSearchInput");
 const commandResultLog = document.getElementById("commandResultLog");
@@ -54,21 +55,33 @@ const renderMapPlayerList = (players) => {
   const seenUuids = new Set();
   players.forEach((player) => {
     seenUuids.add(player.uuid);
-    if (mapPlayerListItems.has(player.uuid)) return;
-    const li = document.createElement("li");
-    const icon = document.createElement("img");
-    icon.className = "player-face-icon";
-    icon.alt = "";
-    icon.src = `bridge/players/${player.uuid}/head?bridgeUrl=${encodeURIComponent(bridgeUrl)}`;
-    li.appendChild(icon);
-    li.appendChild(document.createTextNode(player.name));
-    li.addEventListener("click", () => mapInstance.lockOnto("players", player.uuid, player.name));
-    mapPlayerList.appendChild(li);
-    mapPlayerListItems.set(player.uuid, li);
+    let entry = mapPlayerListItems.get(player.uuid);
+    if (!entry) {
+      const li = document.createElement("li");
+      const icon = document.createElement("img");
+      icon.className = "player-face-icon";
+      icon.alt = "";
+      icon.src = `bridge/players/${player.uuid}/head?bridgeUrl=${encodeURIComponent(bridgeUrl)}`;
+      const nameEl = document.createElement("span");
+      nameEl.textContent = player.name;
+      const coordEl = document.createElement("span");
+      coordEl.className = "player-list-coord"; // 실시간 좌표 — 스냅샷마다 텍스트만 갱신.
+      li.appendChild(icon);
+      li.appendChild(nameEl);
+      li.appendChild(coordEl);
+      li.addEventListener("click", () => mapInstance.lockOnto("players", player.uuid, player.name));
+      mapPlayerList.appendChild(li);
+      entry = { li, coordEl };
+      mapPlayerListItems.set(player.uuid, entry);
+    }
+    // bridge-paper 재배포 전에는 스냅샷에 y가 없을 수 있음(구버전 플러그인) — NaN을 그대로
+    // 보여주지 않고 "?"로 표시.
+    const round = (n) => (Number.isFinite(n) ? Math.round(n) : "?");
+    entry.coordEl.textContent = `${round(player.x)}, ${round(player.y)}, ${round(player.z)}`;
   });
-  for (const [uuid, li] of mapPlayerListItems) {
+  for (const [uuid, entry] of mapPlayerListItems) {
     if (!seenUuids.has(uuid)) {
-      li.remove();
+      entry.li.remove();
       mapPlayerListItems.delete(uuid);
     }
   }
@@ -89,11 +102,44 @@ const renderMapFocusStatus = (name) => {
   mapFocusStatus.textContent = name ? `고정 중: ${name}` : "";
 };
 
+const renderSpawnPoint = (spawn) => {
+  mapSpawnStatus.textContent = spawn
+    ? `스폰 포인트: ${Math.round(spawn.x)}, ${Math.round(spawn.y)}, ${Math.round(spawn.z)}`
+    : "스폰 포인트: -";
+};
+
+// 지도에서 플레이어 마커를 드래그해 놓으면(map.js) 그 지점 x,z의 최고 높이를 물어본 뒤
+// +2 높이로 tp 명령을 보낸다 — 실제 명령 전송/실패 로그는 여기(콘솔 탭 로직)가 담당.
+const handlePlayerDropTeleport = async (playerName, wx, wz) => {
+  const bridgeUrl = bridgeInput.value.trim();
+  if (!bridgeUrl) return;
+  const x = Math.floor(wx);
+  const z = Math.floor(wz);
+  try {
+    const params = new URLSearchParams({ bridgeUrl, x: String(x), z: String(z) });
+    const res = await fetch(`bridge/world/overworld/heightmap?${params}`);
+    if (!res.ok) {
+      // 409는 bridge-paper가 "아직 생성되지 않은 지역"이라 강제 생성을 피하고 돌려주는
+      // 응답 — 그 외 상태 코드는 인증/프록시/서버 예외 등 다른 원인이라 뭉뚱그리지 않는다.
+      const reason = res.status === 409 ? "미생성 지역" : `서버 오류 ${res.status}`;
+      appendLine(consoleLog, `[오류] 텔레포트 실패: 그 지점의 높이를 알 수 없습니다(${reason}).`);
+      return;
+    }
+    const { y } = await res.json();
+    sendConsoleCommand(bridgeUrl, `tp ${playerName} ${x} ${y + 2} ${z}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    appendLine(consoleLog, `[오류] 텔레포트 실패: ${message}`);
+  }
+};
+
 const mapInstance = createMap({
   canvas: mapCanvas,
   statusEl: mapStatus,
   onPlayersUpdate,
   onFocusChange: renderMapFocusStatus,
+  onSpawnPoint: renderSpawnPoint,
+  onPlayerDropTeleport: handlePlayerDropTeleport,
 });
 
 // ---- 탭 ----
