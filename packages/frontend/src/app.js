@@ -19,6 +19,7 @@ const mapPlayerList = document.getElementById("mapPlayerList");
 const mapFocusRow = document.getElementById("mapFocusRow");
 const mapFocusStatus = document.getElementById("mapFocusStatus");
 const mapFocusReleaseButton = document.getElementById("mapFocusReleaseButton");
+const mapRefreshButton = document.getElementById("mapRefreshButton");
 const mapSpawnStatus = document.getElementById("mapSpawnStatus");
 
 const commandSearchInput = document.getElementById("commandSearchInput");
@@ -457,6 +458,7 @@ consoleScrollBottomButton.addEventListener("click", () => {
   activeConsolePanel.scrollTop = activeConsolePanel.scrollHeight;
 });
 mapFocusReleaseButton.addEventListener("click", () => mapInstance.clearLock());
+mapRefreshButton.addEventListener("click", () => mapInstance.refreshTiles());
 
 // ---- 명령어 (GUI 빌더) ----
 

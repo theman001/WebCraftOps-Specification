@@ -109,5 +109,8 @@ public final class BridgePaperPlugin extends JavaPlugin {
         if (originalErr != null) {
             System.setErr(originalErr);
         }
+        // SseBroadcaster는 더 이상 스레드/실행기를 직접 소유하지 않는다(연결마다 이미 있는
+        // SseStreamHandler의 스레드를 재사용) — 여기서 따로 정리할 게 없다. httpServer.stop()이
+        // 새 연결을 막고, 남아있던 연결 스레드는 각자의 finally에서 unsubscribe()로 정리된다.
     }
 }

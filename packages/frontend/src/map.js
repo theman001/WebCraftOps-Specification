@@ -342,6 +342,9 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
 
   let activeTileLoads = 0;
   const tileLoadQueue = []; // [{ cx, cz, bust }]
+  // "새로고침" 버튼이 누를 때마다 하나씩 올린다 — 지금 세대가 아닌 응답/취소는 화면
+  // 반영을 건너뛴다(교체됐거나 곧 지워질 tiles 항목을 건드리지 않기 위해).
+  let loadGeneration = 0;
 
   const pumpTileQueue = () => {
     while (activeTileLoads < MAX_CONCURRENT_TILE_LOADS && tileLoadQueue.length > 0) {
@@ -351,27 +354,56 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
   };
 
+  // fetch+AbortController로 받는다(예전엔 <img>였는데, <img>는 요청을 진짜로 취소할
+  // 방법이 없어서 "새로고침"을 눌러도 이미 나간 요청은 서버에 계속 남아있었다 — 이러면
+  // 동시 요청 수 상한(MAX_CONCURRENT_TILE_LOADS)이 새로고침 한 번에 사실상 두 배가 될
+  // 수 있었다). 여기선 refreshTiles()가 controller.abort()로 진짜 끊을 수 있다.
   const startTileLoad = (cx, cz, bust) => {
     const tileKey = key(cx, cz);
+    const gen = loadGeneration;
     const params = new URLSearchParams({ bridgeUrl: currentBridgeUrl, cx: String(cx), cz: String(cz) });
     if (bust) params.set("v", String(Date.now()));
-    const img = new Image();
-    const entry = { img, status: "loading" };
+    const controller = new AbortController();
+    const entry = { img: null, status: "loading", controller };
     tiles.set(tileKey, entry);
+    // refreshTiles()/start()가 세대를 올릴 때 activeTileLoads를 0으로 강제 리셋한다 —
+    // 그 시점에 아직 안 끝난 옛 세대 요청들의 몫은 이미 "청산"된 것으로 친다. 그런데 그
+    // 요청들도 abort() 이후 결국 이 finish()를 taps(then/catch 어느 쪽이든)하므로, 여기서
+    // 세대 구분 없이 매번 감산하면 새 세대 몫까지 이중으로 깎여 activeTileLoads가 실제
+    // 동시 요청 수보다 작아지거나 음수가 될 수 있다(상한 체크가 무력화됨). 그래서 감산은
+    // "지금 세대"에 속한 요청일 때만 한다.
     const finish = () => {
-      activeTileLoads -= 1;
+      if (gen === loadGeneration) {
+        activeTileLoads -= 1;
+      }
       pumpTileQueue();
     };
-    img.onload = () => {
-      entry.status = "ready";
-      draw();
-      finish();
-    };
-    img.onerror = () => {
-      entry.status = "error";
-      finish();
-    };
-    img.src = `bridge/world/overworld/map/tile?${params.toString()}`;
+    fetch(`bridge/world/overworld/map/tile?${params.toString()}`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => createImageBitmap(blob))
+      .then((bitmap) => {
+        if (gen === loadGeneration) {
+          entry.img = bitmap;
+          entry.status = "ready";
+          draw();
+        } else {
+          bitmap.close(); // 이제 안 쓸 비트맵 — 메모리 바로 반납.
+        }
+        finish();
+      })
+      .catch((error) => {
+        // AbortError는 refreshTiles()가 의도적으로 끊은 것 — 이 tileKey는 이미 tiles에서
+        // 지워졌거나 새 세대로 덮어써졌으니 상태를 건드릴 필요가 없다. finish()(동시 로딩
+        // 개수 반납)는 그것과 무관하게 항상 부른다 — 안 그러면 activeTileLoads가 안 줄어
+        // 들어 이후 로딩이 막힌다.
+        if (error.name !== "AbortError" && gen === loadGeneration) {
+          entry.status = "error";
+        }
+        finish();
+      });
   };
 
   // 즉시 로드하지 않고 큐에 넣기만 한다 — 실제 요청은 pumpTileQueue가 동시 개수를
@@ -415,6 +447,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
     for (const tileKey of Array.from(tiles.keys())) {
       if (!desired.has(tileKey)) {
+        tiles.get(tileKey).img?.close(); // ImageBitmap은 참조만 버리면 GC를 기다려야 함 — 바로 반납.
         tiles.delete(tileKey);
       }
     }
@@ -423,6 +456,25 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
   const scheduleSync = () => {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(syncTiles, TILE_SYNC_DEBOUNCE_MS);
+  };
+
+  // "새로고침" 버튼: 대기 중이거나 응답을 기다리던 타일 요청을 전부 버리고, 지금 화면에
+  // 보이는 범위 기준으로 처음부터 다시 요청한다.
+  const refreshTiles = () => {
+    loadGeneration += 1; // 이후 도착하는 옛 세대 응답/취소는 startTileLoad가 화면 반영을 건너뛴다.
+    // 이미 렌더링 끝난("ready") 타일은 그대로 둔다 — 로딩 중이거나 실패한 것만 버려서
+    // syncTiles가 다시 요청하게 한다. 다 지우면 이미 잘 보이던 화면까지 깜빡이며 사라진다.
+    // 로딩 중이던 건 controller.abort()로 실제로 요청을 끊는다(fetch라 진짜 취소가 됨 —
+    // MAX_CONCURRENT_TILE_LOADS 상한을 새로고침 한 번에 두 배로 만들지 않기 위함).
+    for (const [tileKey, tile] of tiles) {
+      if (tile.status !== "ready") {
+        tile.controller?.abort();
+        tiles.delete(tileKey);
+      }
+    }
+    tileLoadQueue.length = 0;
+    activeTileLoads = 0; // abort()로 실제 취소되므로 0으로 리셋해도 상한을 넘기지 않는다.
+    syncTiles();
   };
 
   // 마우스(mousedown/move/up)와 터치(1손가락 팬)가 같은 팬/클릭/드래그-텔레포트 로직을
@@ -773,7 +825,17 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
 
   const start = (bridgeUrl) => {
     currentBridgeUrl = bridgeUrl;
+    // 다른 서버로 전환 — refreshTiles()와 같은 이유로 세대를 올리고 이전 서버로 나가
+    // 있던 요청을 실제로 끊는다. 안 그러면 이전 서버의 타일 응답이 늦게 도착했을 때 지금
+    // 세대로 착각해 새 서버 화면에 잘못 그려질 수 있다.
+    loadGeneration += 1;
+    for (const tile of tiles.values()) {
+      tile.controller?.abort();
+      tile.img?.close();
+    }
     tiles.clear();
+    tileLoadQueue.length = 0;
+    activeTileLoads = 0;
     playerIconCache.clear();
     motionState.players.clear();
     motionState.mobs.clear();
@@ -792,5 +854,5 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
   };
 
-  return { start, lockOnto, clearLock, setEntityVisibility };
+  return { start, lockOnto, clearLock, setEntityVisibility, refreshTiles };
 };
