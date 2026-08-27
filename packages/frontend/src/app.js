@@ -21,6 +21,7 @@ const mapFocusStatus = document.getElementById("mapFocusStatus");
 const mapFocusReleaseButton = document.getElementById("mapFocusReleaseButton");
 const mapRefreshButton = document.getElementById("mapRefreshButton");
 const mapSpawnStatus = document.getElementById("mapSpawnStatus");
+const mapWorldTabs = document.getElementById("mapWorldTabs");
 
 const commandSearchInput = document.getElementById("commandSearchInput");
 const commandResultLog = document.getElementById("commandResultLog");
@@ -44,7 +45,11 @@ let latestOnlinePlayers = []; // 명령어 탭의 플레이어 드롭다운/자�
 // 나갈 때만 새로 받아오면 충분함).
 const mapPlayerListItems = new Map(); // uuid -> li
 const renderMapPlayerList = (players) => {
-  if (players.length === 0) {
+  // 엔티티 스트림은 이제 모든 월드를 함께 보내므로(map.js 참고), 지도 탭 목록은 지금
+  // 보고 있는 월드 소속만 걸러서 보여준다 — 명령어 탭 드롭다운은 이걸 거치지 않고
+  // 전체(latestOnlinePlayers)를 쓴다(어느 월드에 있든 대상으로 고를 수 있어야 함).
+  const inCurrentWorld = players.filter((player) => player.world === mapInstance.getCurrentWorldId());
+  if (inCurrentWorld.length === 0) {
     mapPlayerListItems.clear();
     mapPlayerList.innerHTML = '<li class="empty-note" style="cursor: default">접속한 유저가 없습니다.</li>';
     return;
@@ -54,7 +59,7 @@ const renderMapPlayerList = (players) => {
   }
   const bridgeUrl = bridgeInput.value.trim();
   const seenUuids = new Set();
-  players.forEach((player) => {
+  inCurrentWorld.forEach((player) => {
     seenUuids.add(player.uuid);
     let entry = mapPlayerListItems.get(player.uuid);
     if (!entry) {
@@ -109,6 +114,31 @@ const renderSpawnPoint = (spawn) => {
     : "스폰 포인트: -";
 };
 
+// 탭/드롭다운에 보여줄 한글 라벨 — environment 기준(표시용일 뿐이라 커스텀 차원은
+// world.id로 자연히 대체됨, 아래 ?? 참고). 실제 /execute in에 쓰는 값은 이제 서버가
+// 내려주는 dimensionKey를 그대로 쓴다(environment로 유추하지 않음 — 커스텀 차원이나
+// 같은 environment의 월드가 여럿이면 유추가 틀릴 수 있어서).
+const WORLD_LABELS = { NORMAL: "오버월드", NETHER: "네더", THE_END: "엔드" };
+
+// 지도 상단 월드 탭(오버월드/네더/엔드 등, 서버에 실제로 있는 월드만) — 클릭하면 그 월드
+// 기준으로 지도를 다시 불러온다. 기존 서브탭(명령어/콘솔) 패턴 그대로 재사용.
+const renderWorldTabs = (worlds) => {
+  mapWorldTabs.innerHTML = "";
+  worlds.forEach((world) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "subtab-btn";
+    btn.textContent = WORLD_LABELS[world.environment] ?? world.id;
+    btn.classList.toggle("active", world.id === mapInstance.getCurrentWorldId());
+    btn.addEventListener("click", () => {
+      mapInstance.switchWorld(world.id);
+      renderWorldTabs(worlds);
+    });
+    mapWorldTabs.appendChild(btn);
+  });
+  updateCommandWorldOptions(worlds);
+};
+
 // 지도에서 플레이어 마커를 드래그해 놓으면(map.js) 그 지점 x,z의 최고 높이를 물어본 뒤
 // +2 높이로 tp 명령을 보낸다 — 실제 명령 전송/실패 로그는 여기(콘솔 탭 로직)가 담당.
 const handlePlayerDropTeleport = async (playerName, wx, wz) => {
@@ -118,7 +148,7 @@ const handlePlayerDropTeleport = async (playerName, wx, wz) => {
   const z = Math.floor(wz);
   try {
     const params = new URLSearchParams({ bridgeUrl, x: String(x), z: String(z) });
-    const res = await fetch(`bridge/world/overworld/heightmap?${params}`);
+    const res = await fetch(`bridge/world/${mapInstance.getCurrentWorldId()}/heightmap?${params}`);
     if (!res.ok) {
       // 409는 bridge-paper가 "아직 생성되지 않은 지역"이라 강제 생성을 피하고 돌려주는
       // 응답 — 그 외 상태 코드는 인증/프록시/서버 예외 등 다른 원인이라 뭉뚱그리지 않는다.
@@ -141,6 +171,7 @@ const mapInstance = createMap({
   onFocusChange: renderMapFocusStatus,
   onSpawnPoint: renderSpawnPoint,
   onPlayerDropTeleport: handlePlayerDropTeleport,
+  onWorldsUpdate: renderWorldTabs,
 });
 
 // ---- 탭 ----
@@ -468,6 +499,7 @@ onlinePlayersDatalist.id = "onlinePlayersDatalist";
 document.body.appendChild(onlinePlayersDatalist);
 
 const playerSelectElements = []; // "player" 타입 인자의 <select> 전체 — 플레이어 목록 갱신 시 같이 채운다.
+const worldSelectElements = []; // "world" 타입 인자의 <select> 전체 — 월드 목록 갱신 시 같이 채운다.
 
 const buildArgField = (command, arg) => {
   const field = document.createElement("div");
@@ -484,6 +516,17 @@ const buildArgField = (command, arg) => {
     select.dataset.argKey = arg.key;
     select.innerHTML = '<option value="">(접속한 플레이어 없음)</option>';
     playerSelectElements.push(select);
+    field.appendChild(select);
+    return { field, getValue: () => select.value };
+  }
+
+  if (arg.type === "world") {
+    // 접속자 목록과 달리 월드는 항상 최소 오버월드 하나는 있고 "대상 없음"이 위험하지
+    // 않으므로(플레이어 선택과 달리 무작위 대상 오발송 위험이 없음), 빈 플레이스홀더 없이
+    // 첫 옵션이 바로 기본 선택된다 — updateCommandWorldOptions가 실제 목록으로 채운다.
+    const select = document.createElement("select");
+    select.dataset.argKey = arg.key;
+    worldSelectElements.push(select);
     field.appendChild(select);
     return { field, getValue: () => select.value };
   }
@@ -644,6 +687,26 @@ const updateCommandPlayerOptions = (players) => {
       `<option value="">${placeholder}</option>` +
       names.map((name) => `<option value="${name}">${name}</option>`).join("");
     if (names.includes(previous)) {
+      select.value = previous;
+    }
+  });
+};
+
+// 월드 목록은 접속한 서버가 바뀔 때만 달라지므로(플레이어 접속/퇴장처럼 자주 갱신될 일이
+// 없음), 지난번과 같으면 다시 채우지 않는다 — innerHTML을 새로 채우면 관리자가 골라둔
+// 선택값이 날아가므로, 정말 서버가 바뀌었을 때만 갱신한다.
+let lastWorldOptionsKey = "";
+const updateCommandWorldOptions = (worlds) => {
+  const key = worlds.map((w) => w.id).join(",");
+  if (key === lastWorldOptionsKey) return;
+  lastWorldOptionsKey = key;
+  const optionsHtml = worlds
+    .map((w) => `<option value="${w.dimensionKey}">${WORLD_LABELS[w.environment] ?? w.id}</option>`)
+    .join("");
+  worldSelectElements.forEach((select) => {
+    const previous = select.value;
+    select.innerHTML = optionsHtml;
+    if (previous && Array.from(select.options).some((opt) => opt.value === previous)) {
       select.value = previous;
     }
   });

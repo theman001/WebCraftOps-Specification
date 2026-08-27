@@ -11,6 +11,7 @@ import net.webcraftops.bridgepaper.handlers.RegistryHandler;
 import net.webcraftops.bridgepaper.handlers.SpawnPointHandler;
 import net.webcraftops.bridgepaper.handlers.SseStreamHandler;
 import net.webcraftops.bridgepaper.handlers.WorldRouteHandler;
+import net.webcraftops.bridgepaper.handlers.WorldsHandler;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -41,6 +42,7 @@ public final class BridgeHttpServer {
             new HeightmapHandler(executor)
         );
         server.createContext("/bridge/world/", wrap(token, worldRoute)); // worldId는 핸들러가 경로에서 직접 파싱
+        server.createContext("/bridge/worlds", wrap(token, new WorldsHandler(executor))); // 네더/엔드 등 실제 월드 목록
         server.createContext("/bridge/console/stream", wrap(token, new SseStreamHandler(consoleBroadcaster)));
         server.createContext("/bridge/console/command", wrap(token, new ConsoleCommandHandler(executor)));
         server.createContext("/bridge/players/", wrap(token, new PlayerHeadHandler()));

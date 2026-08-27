@@ -50,7 +50,7 @@ public final class MapChangeListener implements Listener {
         renderer.invalidate(worldName, cx, cz);
         boolean broadcasted = mapEvents.hasSubscribers();
         if (broadcasted) {
-            mapEvents.broadcast("{\"cx\":" + cx + ",\"cz\":" + cz + "}");
+            mapEvents.broadcast("{\"world\":\"" + Json.escape(worldName) + "\",\"cx\":" + cx + ",\"cz\":" + cz + "}");
         }
         LOGGER.info("[MapEvents] world=" + worldName + " cx=" + cx + " cz=" + cz
             + " 신규 생성 청크 — 미탐사 플레이스홀더 캐시 무효화");
@@ -63,7 +63,7 @@ public final class MapChangeListener implements Listener {
         renderer.invalidate(worldName, cx, cz);
         boolean broadcasted = mapEvents.hasSubscribers();
         if (broadcasted) {
-            mapEvents.broadcast("{\"cx\":" + cx + ",\"cz\":" + cz + "}");
+            mapEvents.broadcast("{\"world\":\"" + Json.escape(worldName) + "\",\"cx\":" + cx + ",\"cz\":" + cz + "}");
         }
         LOGGER.info("[MapEvents] world=" + worldName + " cx=" + cx + " cz=" + cz
             + " 타일 캐시 무효화" + (broadcasted ? " + SSE push" : " (구독자 없음, push 생략)"));

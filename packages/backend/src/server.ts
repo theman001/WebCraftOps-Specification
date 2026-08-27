@@ -335,70 +335,58 @@ const handleRequest = async (req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/map/events") {
+  // 네더/엔드 등 다른 월드도 지원하면서(각 핸들러가 /bridge/world/{worldId}/... 형태를
+  // 그대로 받아들임) worldId별로 라우트를 5개씩 복붙하지 않으려고 패턴 하나로 묶는다.
+  // worldId는 실제 Bukkit 월드 이름("world_nether" 등) 또는 "overworld" 별칭 그대로 통과.
+  const worldRouteMatch = pathname.match(
+    /^\/bridge\/world\/([^/]+)\/(map\/events|map\/tile|entities\/stream|spawn|heightmap)$/,
+  );
+  if (req.method === "GET" && worldRouteMatch) {
+    const [, worldId, sub] = worldRouteMatch;
     const bridgeUrl = url.searchParams.get("bridgeUrl");
     if (!bridgeUrl) {
       sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
       return;
     }
-    await proxySse(req, res, bridgeUrl, "/bridge/world/overworld/map/events");
-    return;
-  }
-
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/map/tile") {
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (!bridgeUrl) {
-      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+    const upstreamBase = `/bridge/world/${worldId}/${sub}`;
+    if (sub === "map/events" || sub === "entities/stream") {
+      await proxySse(req, res, bridgeUrl, upstreamBase);
       return;
     }
-    const cx = url.searchParams.get("cx");
-    const cz = url.searchParams.get("cz");
-    const tileQuery = new URLSearchParams();
-    if (cx !== null) tileQuery.set("cx", cx);
-    if (cz !== null) tileQuery.set("cz", cz);
-    const queryString = tileQuery.toString();
-    await proxyImage(
-      res,
-      bridgeUrl,
-      `/bridge/world/overworld/map/tile${queryString ? `?${queryString}` : ""}`,
-      "image/png",
-    );
-    return;
-  }
-
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/entities/stream") {
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (!bridgeUrl) {
-      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+    if (sub === "map/tile") {
+      const cx = url.searchParams.get("cx");
+      const cz = url.searchParams.get("cz");
+      const tileQuery = new URLSearchParams();
+      if (cx !== null) tileQuery.set("cx", cx);
+      if (cz !== null) tileQuery.set("cz", cz);
+      const queryString = tileQuery.toString();
+      await proxyImage(res, bridgeUrl, `${upstreamBase}${queryString ? `?${queryString}` : ""}`, "image/png");
       return;
     }
-    await proxySse(req, res, bridgeUrl, "/bridge/world/overworld/entities/stream");
-    return;
-  }
-
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/spawn") {
-    const bridgeUrl = url.searchParams.get("bridgeUrl");
-    if (!bridgeUrl) {
-      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
+    if (sub === "spawn") {
+      const result = await proxyBridgeRequest(bridgeUrl, upstreamBase);
+      sendJson(res, result.ok ? 200 : result.status || 502, result.ok ? result.payload : result);
       return;
     }
-    const result = await proxyBridgeRequest(bridgeUrl, "/bridge/world/overworld/spawn");
+    // sub === "heightmap"
+    const x = url.searchParams.get("x");
+    const z = url.searchParams.get("z");
+    if (x === null || z === null) {
+      sendJson(res, 400, { message: "x, z 쿼리 파라미터가 필요합니다." });
+      return;
+    }
+    const result = await proxyBridgeRequest(bridgeUrl, `${upstreamBase}?${new URLSearchParams({ x, z })}`);
     sendJson(res, result.ok ? 200 : result.status || 502, result.ok ? result.payload : result);
     return;
   }
 
-  if (req.method === "GET" && pathname === "/bridge/world/overworld/heightmap") {
+  if (req.method === "GET" && pathname === "/bridge/worlds") {
     const bridgeUrl = url.searchParams.get("bridgeUrl");
-    const x = url.searchParams.get("x");
-    const z = url.searchParams.get("z");
-    if (!bridgeUrl || x === null || z === null) {
-      sendJson(res, 400, { message: "bridgeUrl, x, z 쿼리 파라미터가 필요합니다." });
+    if (!bridgeUrl) {
+      sendJson(res, 400, { message: "bridgeUrl 쿼리 파라미터가 필요합니다." });
       return;
     }
-    const result = await proxyBridgeRequest(
-      bridgeUrl,
-      `/bridge/world/overworld/heightmap?${new URLSearchParams({ x, z }).toString()}`,
-    );
+    const result = await proxyBridgeRequest(bridgeUrl, "/bridge/worlds");
     sendJson(res, result.ok ? 200 : result.status || 502, result.ok ? result.payload : result);
     return;
   }

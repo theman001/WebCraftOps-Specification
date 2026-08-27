@@ -21,10 +21,19 @@ const CLICK_DRAG_THRESHOLD = 4; // 이 이하로 움직이면 드래그가 아�
 // 선형 보간해서 그린다(전송 빈도는 그대로 두고, 매 프레임 그리는 화면 쪽만 부드럽게).
 const SNAPSHOT_INTERVAL_MS = 300;
 
-export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, onSpawnPoint, onPlayerDropTeleport }) => {
+export const createMap = ({
+  canvas,
+  statusEl,
+  onPlayersUpdate,
+  onFocusChange,
+  onSpawnPoint,
+  onPlayerDropTeleport,
+  onWorldsUpdate,
+}) => {
   const ctx = canvas.getContext("2d");
 
   let currentBridgeUrl = null;
+  let currentWorldId = "overworld"; // /bridge/worlds 응답이 오기 전까지의 기본값(별칭)
   let originX = 0; // 캔버스 중심이 가리키는 월드 X
   let originZ = 0;
   let scale = 4; // 픽셀/블록
@@ -77,8 +86,12 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
       const id = idOf(category, entity);
       seen.add(id);
       const prev = map.get(id);
-      const start = prev ? interpolate(prev, now) : { x: entity.x, z: entity.z };
-      map.set(id, { prevX: start.x, prevZ: start.z, currX: entity.x, currZ: entity.z, t0: now });
+      // 포탈/명령어(execute in ... run tp)로 월드가 바뀐 경우 — 이전 좌표는 완전히 다른
+      // 좌표계라 보간하면 지도 위에서 순간적으로 길게 "날아가는" 것처럼 보인다. 월드가
+      // 바뀌었으면 새로 나타난 엔티티처럼 취급해 보간을 건너뛴다.
+      const worldChanged = prev && prev.world !== entity.world;
+      const start = prev && !worldChanged ? interpolate(prev, now) : { x: entity.x, z: entity.z };
+      map.set(id, { prevX: start.x, prevZ: start.z, currX: entity.x, currZ: entity.z, t0: now, world: entity.world });
     }
     for (const id of Array.from(map.keys())) {
       if (!seen.has(id)) map.delete(id);
@@ -194,10 +207,17 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     ctx.fillText(target.name, target.x, boxY + boxHeight - 5);
   };
 
+  // 엔티티 스트림은 이제 모든 월드를 한 번에 실어 보낸다(그래야 월드 전환마다 SSE를 새로
+  // 붙잡을 필요가 없다) — 지도에는 지금 보고 있는 월드 소속만 그린다. 좌표계가 월드마다
+  // 독립적이라 다른 월드 엔티티를 섞어 그리면 안 된다. world 필드가 아예 없으면(재배포
+  // 전 구버전 bridge-paper) 필터링하지 말고 다 보여준다 — 이전(단일 월드 가정) 동작 그대로.
+  const inCurrentWorld = (entity) => entity.world === undefined || entity.world === currentWorldId;
+
   const drawEntities = () => {
     markerHitTargets = [];
     if (entityVisibility.items) {
       for (const item of latestEntities.items) {
+        if (!inCurrentWorld(item)) continue;
         const { x, z } = positionOf("items", item);
         drawMarker(itemIconFor(item.material), x, z, null, {
           category: "items",
@@ -208,6 +228,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
     if (entityVisibility.mobs) {
       for (const mob of latestEntities.mobs) {
+        if (!inCurrentWorld(mob)) continue;
         const { x, z } = positionOf("mobs", mob);
         drawMarker(mobIconFor(mob.type), x, z, mob.name, {
           category: "mobs",
@@ -218,6 +239,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
     if (entityVisibility.players) {
       for (const player of latestEntities.players) {
+        if (!inCurrentWorld(player)) continue;
         const { x, z } = positionOf("players", player);
         drawMarker(playerIconFor(player.uuid), x, z, player.name, {
           category: "players",
@@ -378,7 +400,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
       }
       pumpTileQueue();
     };
-    fetch(`bridge/world/overworld/map/tile?${params.toString()}`, { signal: controller.signal })
+    fetch(`bridge/world/${currentWorldId}/map/tile?${params.toString()}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.blob();
@@ -703,7 +725,12 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     };
     es.onmessage = (event) => {
       try {
-        const { cx, cz } = JSON.parse(event.data);
+        const { world, cx, cz } = JSON.parse(event.data);
+        // 이 스트림도 이제 모든 월드의 변경 이벤트를 함께 보낸다 — 지금 보는 월드가
+        // 아니면 무시한다(안 그러면 다른 차원에서 생긴 청크 변경 때문에 지금 화면의
+        // 같은 좌표 타일이 애먼 이유로 다시 요청될 수 있다). world 필드가 없으면(재배포
+        // 전 구버전 bridge-paper) 걸러내지 않는다 — 이전 동작 그대로.
+        if (world !== undefined && world !== currentWorldId) return;
         if (tiles.has(key(cx, cz))) {
           loadTile(cx, cz, true);
         }
@@ -747,15 +774,17 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
   };
 
   // 한 번만 조회하면 되는 정적 지점 — 매 스냅샷마다 올 필요 없어 별도 fetch로 처리.
-  const fetchSpawnPoint = async (bridgeUrl) => {
+  const fetchSpawnPoint = async (bridgeUrl, worldId) => {
     try {
-      const res = await fetch(`bridge/world/overworld/spawn?bridgeUrl=${encodeURIComponent(bridgeUrl)}`);
-      // 응답이 오는 사이 다른 서버로 전환됐으면(start()가 다시 호출됨) 낡은 결과라 버린다 —
-      // 아니면 방금 연결한 새 서버 화면에 이전 서버의 스폰 좌표가 잘못 표시될 수 있다.
-      if (bridgeUrl !== currentBridgeUrl) return;
+      const res = await fetch(`bridge/world/${worldId}/spawn?bridgeUrl=${encodeURIComponent(bridgeUrl)}`);
+      // 응답이 오는 사이 다른 서버/월드로 전환됐으면 낡은 결과라 버린다 — 아니면 지금 보는
+      // 화면에 이전 서버/월드의 스폰 좌표가 잘못 표시될 수 있다.
+      if (bridgeUrl !== currentBridgeUrl || worldId !== currentWorldId) return;
       if (!res.ok) return;
       spawnPoint = await res.json();
       onSpawnPoint?.(spawnPoint);
+      centerOn(spawnPoint.x, spawnPoint.z); // 월드를 새로 열면 그 월드 스폰 지점부터 보여준다.
+      scheduleSync();
       draw();
     } catch (error) {
       console.warn("[Map] 스폰 포인트 조회 실패", error);
@@ -823,11 +852,9 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     animationFrameId = requestAnimationFrame(tick);
   };
 
-  const start = (bridgeUrl) => {
-    currentBridgeUrl = bridgeUrl;
-    // 다른 서버로 전환 — refreshTiles()와 같은 이유로 세대를 올리고 이전 서버로 나가
-    // 있던 요청을 실제로 끊는다. 안 그러면 이전 서버의 타일 응답이 늦게 도착했을 때 지금
-    // 세대로 착각해 새 서버 화면에 잘못 그려질 수 있다.
+  // 서버/월드 전환 공통 — 세대를 올려서 이전 세대로 나가있던 타일 요청의 응답/취소가
+  // 지금 세대에 영향 안 주게 하고, 아직 안 끝난 요청은 실제로 abort()해서 끊는다.
+  const resetTiles = () => {
     loadGeneration += 1;
     for (const tile of tiles.values()) {
       tile.controller?.abort();
@@ -836,6 +863,54 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     tiles.clear();
     tileLoadQueue.length = 0;
     activeTileLoads = 0;
+  };
+
+  // 지도 상단 월드 탭 클릭 시 호출 — 보던 월드의 타일/스폰 상태만 새 월드 기준으로
+  // 다시 불러온다. 실시간 스트림(엔티티/지도 이벤트)은 이미 모든 월드를 함께 보내주므로
+  // 다시 연결할 필요 없이, 그리는 쪽(drawEntities)에서 월드로 걸러낼 뿐이다.
+  const switchWorld = (worldId) => {
+    if (!worldId || worldId === currentWorldId) return;
+    currentWorldId = worldId;
+    resetTiles();
+    lockedTarget = null;
+    onFocusChange?.(null);
+    spawnPoint = null;
+    onSpawnPoint?.(null);
+    syncTiles();
+    fetchSpawnPoint(currentBridgeUrl, worldId);
+    draw();
+  };
+
+  // 서버에 실제로 존재하는 월드 목록(네더/엔드 포함)을 물어봐서 지도 상단 월드 탭을
+  // 채운다. "overworld" 별칭 대신 실제 worldId로 갈아끼워서 이후 요청이 진짜 이름을 쓰게
+  // 한다(백엔드는 별칭도 계속 지원하지만, 탭 활성 표시가 실제 id 기준이라 맞춰야 함).
+  // start()는 실제 월드를 아직 모르는 채로 시작한다("overworld" 별칭만 앎) — 여기서
+  // 확정한 뒤에야 타일/스폰을 딱 한 번만 불러온다(별칭으로 한 번, 실제 id로 또 한 번
+  // 이중으로 부르지 않기 위해 start()는 syncTiles/fetchSpawnPoint를 직접 안 부른다).
+  // 탭 렌더링(onWorldsUpdate)도 currentWorldId를 실제 값으로 바꾼 "다음"에 호출해야
+  // 첫 렌더부터 활성 탭 표시가 맞는다.
+  const fetchWorlds = async (bridgeUrl) => {
+    try {
+      const res = await fetch(`bridge/worlds?bridgeUrl=${encodeURIComponent(bridgeUrl)}`);
+      if (bridgeUrl !== currentBridgeUrl) return;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const worlds = await res.json();
+      const normal = worlds.find((w) => w.environment === "NORMAL") ?? worlds[0];
+      if (normal) currentWorldId = normal.id;
+      onWorldsUpdate?.(worlds);
+    } catch (error) {
+      // 구버전 bridge-paper(아직 /bridge/worlds 없음) — 탭 없이 "overworld" 별칭 하나로
+      // 계속 진행한다(이 기능 이전과 동일한 동작).
+      console.warn("[Map] 월드 목록 조회 실패 — overworld 별칭으로 계속 진행", error);
+    }
+    syncTiles();
+    fetchSpawnPoint(bridgeUrl, currentWorldId);
+  };
+
+  const start = (bridgeUrl) => {
+    currentBridgeUrl = bridgeUrl;
+    currentWorldId = "overworld"; // 월드 목록 응답 오기 전까지의 기본값(별칭)
+    resetTiles();
     playerIconCache.clear();
     motionState.players.clear();
     motionState.mobs.clear();
@@ -845,14 +920,21 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     statusEl.textContent = "지도 불러오는 중...";
     spawnPoint = null;
     resize();
-    syncTiles();
     connectEvents(bridgeUrl);
     connectEntities(bridgeUrl);
-    fetchSpawnPoint(bridgeUrl);
+    fetchWorlds(bridgeUrl);
     if (animationFrameId === null) {
       animationFrameId = requestAnimationFrame(tick);
     }
   };
 
-  return { start, lockOnto, clearLock, setEntityVisibility, refreshTiles };
+  return {
+    start,
+    lockOnto,
+    clearLock,
+    setEntityVisibility,
+    refreshTiles,
+    switchWorld,
+    getCurrentWorldId: () => currentWorldId,
+  };
 };

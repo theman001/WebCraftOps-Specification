@@ -60,7 +60,7 @@ public final class MapTileRenderer {
         try {
             for (int lx = 0; lx < CHUNK_SIZE; lx++) {
                 for (int lz = 0; lz < CHUNK_SIZE; lz++) {
-                    Block block = world.getHighestBlockAt(baseX + lx, baseZ + lz);
+                    Block block = topBlock(world, baseX + lx, baseZ + lz);
                     Material material = block.getType();
                     BufferedImage texture = Textures.getTopTexture(material);
                     stamp(tile, texture, lx * PIXELS_PER_BLOCK, lz * PIXELS_PER_BLOCK);
@@ -80,6 +80,31 @@ public final class MapTileRenderer {
         LOGGER.info(String.format("[MapTile] world=%s cx=%d cz=%d 렌더링 완료 (%.1fms, %d bytes)",
             world.getName(), cx, cz, ms, bytes.length));
         return bytes;
+    }
+
+    // 네더는 하늘이 없고 항상 베드락 천장으로 덮여있어서 world.getHighestBlockAt()이
+    // (하늘에서 내려다보는 관점이라) 매 컬럼 그 천장만 잡아버린다 — 지도 전체가 회색
+    // 천장 한 장으로만 보이게 된다. 그래서 네더는 천장 바로 아래부터 첫 번째 비-공기
+    // 블록을 직접 스캔한다("동굴형" 지도 — Dynmap 등 다른 도구도 같은 방식을 쓴다).
+    //
+    // ponytail: 컬럼당 최대 ~120블록을 하나씩 읽는다(O(1) 하이트맵 대비 훨씬 느림). 다만
+    // 이 메서드는 render() 위에서 이미 isChunkGenerated() 통과한(=이미 메모리에 로드된)
+    // 청크에서만 불리므로 원래 사고 원인이었던 "동기 청크 생성"과는 무관하고, 단순 배열
+    // 조회 수준이라 밀리초 단위로 끝난다 — 동시 렌더 개수도 이미 4개로 제한돼 있다(이
+    // 파일 상단 MapTileHandler의 세마포어). 실측상 문제 되면: 청크 섹션을 직접 순회하는
+    // 더 빠른 API로 바꾸거나, 네더 타일도 별도 동시성 캡을 둘 것.
+    private static Block topBlock(World world, int x, int z) {
+        if (world.getEnvironment() != World.Environment.NETHER) {
+            return world.getHighestBlockAt(x, z);
+        }
+        int startY = Math.min(world.getMaxHeight() - 5, 120);
+        for (int y = startY; y > world.getMinHeight(); y--) {
+            Block block = world.getBlockAt(x, y, z);
+            if (block.getType() != Material.AIR && block.getType() != Material.CAVE_AIR) {
+                return block;
+            }
+        }
+        return world.getBlockAt(x, world.getMinHeight(), z); // 완전히 뚫린 기둥 — 바닥(대개 베드락) 반환.
     }
 
     public void invalidate(String worldName, int cx, int cz) {

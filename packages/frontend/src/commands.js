@@ -148,14 +148,18 @@ export const COMMANDS = [
     id: "tp-coords",
     category: "player",
     label: "좌표로 텔레포트",
-    syntax: "/tp <대상> <x> <y> <z>",
+    syntax: "/execute in <월드> run tp <대상> <x> <y> <z>",
     args: [
       { type: "player", key: "target", label: "이동할 플레이어" },
+      { type: "world", key: "world", label: "대상 월드" },
       { type: "number", key: "x", label: "X 좌표", default: 0, min: -30000000, max: 30000000 },
       { type: "number", key: "y", label: "Y 좌표", default: 64, min: -64, max: 320 },
       { type: "number", key: "z", label: "Z 좌표", default: 0, min: -30000000, max: 30000000 },
     ],
-    build: (v) => `tp ${v.target} ${v.x} ${v.y} ${v.z}`,
+    // execute in을 항상 쓰면(같은 월드로 보낼 때도) 다른 차원에 있는 플레이어를 그
+    // 월드로 데려오면서 동시에 좌표까지 지정할 수 있다 — 평범한 tp는 지금 있는 차원
+    // 안에서만 움직이고 차원을 못 건너간다.
+    build: (v) => `execute in ${v.world} run tp ${v.target} ${v.x} ${v.y} ${v.z}`,
   },
   {
     id: "gamemode",

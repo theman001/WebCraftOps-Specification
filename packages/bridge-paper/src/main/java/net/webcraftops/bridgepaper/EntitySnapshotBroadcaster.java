@@ -66,45 +66,55 @@ public final class EntitySnapshotBroadcaster {
         }
     }
 
-    // [수정: 라운드 1] Bukkit.getWorlds() 전체(네더/엔드 포함)를 돌면 다른 차원의 엔티티가
-    // 지도(오버월드 하나만 그림)에 자기 차원 좌표 그대로 잘못된 위치로 찍혔다 — 지도가
-    // 대표하는 월드(=MapTileHandler/HttpUtil.resolveWorld("overworld")와 동일하게 첫
-    // 번째 월드) 하나만 스캔하도록 좁혔다. World.getEntities()는 그 월드에 있는 엔티티만
-    // 반환하므로 다른 차원의 플레이어/몹은 자연히 빠진다.
+    // [수정: 라운드 1] 처음엔 Bukkit.getWorlds() 전체(네더/엔드 포함)를 돌았더니 다른
+    // 차원의 엔티티가 지도(그때는 오버월드 하나만 그림)에 자기 차원 좌표 그대로 잘못된
+    // 위치로 찍혀서, 첫 번째 월드 하나만 스캔하도록 좁혔었다.
+    //
+    // [수정: 라운드 7 — 네더/엔드 지원] 이제 프런트가 여러 월드를 탭으로 전환하며 보므로
+    // 다시 모든 월드를 스캔하되, 각 엔티티에 "world" 필드를 붙여 어느 차원 소속인지
+    // 명시한다 — 프런트가 지금 보고 있는 월드와 다른 world 값의 엔티티는 걸러서 그린다
+    // (좌표계가 월드마다 독립적이라 섞어 그리면 안 됨). 스트림/구독은 여전히 하나만 두고
+    // (hasSubscribers() 체크도 하나) 필터링은 받는 쪽에서 하는 게, 월드마다 SSE 연결과
+    // 스케줄러를 따로 두는 것보다 훨씬 단순하다.
     private String buildSnapshotJson() {
         StringBuilder players = new StringBuilder();
         StringBuilder mobs = new StringBuilder();
         StringBuilder items = new StringBuilder();
 
-        World world = Bukkit.getWorlds().get(0);
-        for (Entity entity : world.getEntities()) {
-            if (entity instanceof Player player) {
-                appendComma(players);
-                players.append("{\"uuid\":\"").append(player.getUniqueId())
-                    .append("\",\"name\":\"").append(Json.escape(player.getName()))
-                    .append("\",\"x\":").append(player.getLocation().getX())
-                    .append(",\"y\":").append(player.getLocation().getY())
-                    .append(",\"z\":").append(player.getLocation().getZ())
-                    .append(",\"yaw\":").append(player.getLocation().getYaw())
-                    .append("}");
-            } else if (entity instanceof Item item) {
-                appendComma(items);
-                // id: 프런트가 "이 특정 아이템"을 스냅샷 사이에서 계속 같은 대상으로 추적하는
-                // 데 쓴다(포커스 고정 — 좌표만으로는 같은 종류의 다른 개체와 구분이 안 됨).
-                items.append("{\"id\":\"").append(item.getUniqueId())
-                    .append("\",\"material\":\"").append(item.getItemStack().getType().name())
-                    .append("\",\"x\":").append(item.getLocation().getX())
-                    .append(",\"z\":").append(item.getLocation().getZ())
-                    .append("}");
-            } else if (entity instanceof LivingEntity living) {
-                appendComma(mobs);
-                String customName = living.getCustomName();
-                mobs.append("{\"id\":\"").append(living.getUniqueId())
-                    .append("\",\"type\":\"").append(living.getType().name())
-                    .append("\",\"x\":").append(living.getLocation().getX())
-                    .append(",\"z\":").append(living.getLocation().getZ())
-                    .append(",\"name\":").append(customName != null ? "\"" + Json.escape(customName) + "\"" : "null")
-                    .append("}");
+        for (World world : Bukkit.getWorlds()) {
+            String worldName = Json.escape(world.getName());
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Player player) {
+                    appendComma(players);
+                    players.append("{\"uuid\":\"").append(player.getUniqueId())
+                        .append("\",\"name\":\"").append(Json.escape(player.getName()))
+                        .append("\",\"world\":\"").append(worldName)
+                        .append("\",\"x\":").append(player.getLocation().getX())
+                        .append(",\"y\":").append(player.getLocation().getY())
+                        .append(",\"z\":").append(player.getLocation().getZ())
+                        .append(",\"yaw\":").append(player.getLocation().getYaw())
+                        .append("}");
+                } else if (entity instanceof Item item) {
+                    appendComma(items);
+                    // id: 프런트가 "이 특정 아이템"을 스냅샷 사이에서 계속 같은 대상으로 추적하는
+                    // 데 쓴다(포커스 고정 — 좌표만으로는 같은 종류의 다른 개체와 구분이 안 됨).
+                    items.append("{\"id\":\"").append(item.getUniqueId())
+                        .append("\",\"material\":\"").append(item.getItemStack().getType().name())
+                        .append("\",\"world\":\"").append(worldName)
+                        .append("\",\"x\":").append(item.getLocation().getX())
+                        .append(",\"z\":").append(item.getLocation().getZ())
+                        .append("}");
+                } else if (entity instanceof LivingEntity living) {
+                    appendComma(mobs);
+                    String customName = living.getCustomName();
+                    mobs.append("{\"id\":\"").append(living.getUniqueId())
+                        .append("\",\"type\":\"").append(living.getType().name())
+                        .append("\",\"world\":\"").append(worldName)
+                        .append("\",\"x\":").append(living.getLocation().getX())
+                        .append(",\"z\":").append(living.getLocation().getZ())
+                        .append(",\"name\":").append(customName != null ? "\"" + Json.escape(customName) + "\"" : "null")
+                        .append("}");
+                }
             }
         }
 

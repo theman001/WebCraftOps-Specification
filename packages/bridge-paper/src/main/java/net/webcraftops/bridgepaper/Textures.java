@@ -116,7 +116,16 @@ public final class Textures {
         return allOk;
     }
 
+    // 세로로 뚫린 기둥(엔드의 공허, 네더 동굴 안의 빈 공간)은 "텍스처를 못 찾음"이 아니라
+    // 실제로 아무것도 없는 게 맞다 — 회색 체커(MISSING)로 대체하면 마치 모르는 블록인 것처럼
+    // 보여서 오해를 준다. 대신 완전 투명을 반환해 지도 배경색(어두운 회색)이 그대로 비치게
+    // 한다 — 공허를 표현하기에 더 정확하다.
+    private static final BufferedImage TRANSPARENT = new BufferedImage(TEXTURE_SIZE, TEXTURE_SIZE, BufferedImage.TYPE_INT_ARGB);
+
     public static synchronized BufferedImage getTopTexture(Material material) {
+        if (material == Material.AIR || material == Material.CAVE_AIR || material == Material.VOID_AIR) {
+            return TRANSPARENT;
+        }
         return CACHE.computeIfAbsent(material, Textures::load);
     }
 
