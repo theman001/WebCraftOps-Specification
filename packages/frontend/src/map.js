@@ -425,21 +425,28 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     syncTimer = setTimeout(syncTiles, TILE_SYNC_DEBOUNCE_MS);
   };
 
-  canvas.addEventListener("mousedown", (event) => {
+  // 마우스(mousedown/move/up)와 터치(1손가락 팬)가 같은 팬/클릭/드래그-텔레포트 로직을
+  // 타도록 clientX/Y만 받는 형태로 뽑아뒀다 — 아래 mouse*/touch* 리스너 양쪽이 호출한다.
+  const pointerDown = (clientX, clientY) => {
     const rect = canvas.getBoundingClientRect();
-    const hit = hitTestMarker(event.clientX - rect.left, event.clientY - rect.top);
+    const hit = hitTestMarker(clientX - rect.left, clientY - rect.top);
     // 플레이어 마커 위에서 시작한 드래그만 "놓은 지점으로 텔레포트" 모드로 취급한다 —
-    // 임계값 이하로 끝나면 mouseup에서 그냥 기존 클릭=포커스 고정으로 처리된다.
+    // 임계값 이하로 끝나면 pointerUp에서 그냥 기존 클릭=포커스 고정으로 처리된다.
     playerDragTarget = hit && hit.category === "players" ? hit : null;
     dragging = true;
     dragMoved = 0;
-    dragStart = { x: event.clientX, y: event.clientY, originX, originZ };
+    dragStart = { x: clientX, y: clientY, originX, originZ };
     canvas.style.cursor = "grabbing";
-  });
-  window.addEventListener("mousemove", (event) => {
+  };
+  const pointerMove = (clientX, clientY) => {
     if (!dragging) return;
-    const dx = event.clientX - dragStart.x;
-    const dy = event.clientY - dragStart.y;
+    // 터치는 mousemove 전용 hover 리스너가 없어서 여기서 직접 hoverPoint를 갱신해야
+    // 드래그-텔레포트 안내선(drawTeleportDrag)이 손가락을 따라간다. 마우스는 아래 hover
+    // 리스너가 같은 값으로 다시 갱신하지만 덮어써도 무해하다.
+    const rect = canvas.getBoundingClientRect();
+    hoverPoint = { sx: clientX - rect.left, sy: clientY - rect.top };
+    const dx = clientX - dragStart.x;
+    const dy = clientY - dragStart.y;
     const wasBelowThreshold = dragMoved < CLICK_DRAG_THRESHOLD;
     dragMoved = Math.max(dragMoved, Math.abs(dx), Math.abs(dy));
     // 진짜 드래그로 넘어가는 순간(=다른 곳을 보고 싶다는 뜻) 포커스 잠금을 푼다. 클릭
@@ -448,8 +455,7 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
       clearLock();
     }
     if (playerDragTarget) {
-      // 플레이어를 드래그하는 중 — 지도는 고정한 채 놓을 위치 안내만 다시 그린다(hoverPoint는
-      // 아래쪽의 hover 전용 mousemove 리스너가 계속 최신 커서 좌표로 갱신해준다).
+      // 플레이어를 드래그하는 중 — 지도는 고정한 채 놓을 위치 안내만 다시 그린다.
       draw();
       return;
     }
@@ -457,17 +463,17 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     originZ = dragStart.originZ - dy / scale;
     draw();
     scheduleSync();
-  });
-  window.addEventListener("mouseup", (event) => {
+  };
+  const pointerUp = (clientX, clientY) => {
     if (!dragging) return;
     dragging = false;
     canvas.style.cursor = "grab";
     if (dragMoved < CLICK_DRAG_THRESHOLD) {
-      handleClick(event);
+      handleClick(clientX, clientY);
     } else if (playerDragTarget) {
       const rect = canvas.getBoundingClientRect();
-      const sx = event.clientX - rect.left;
-      const sy = event.clientY - rect.top;
+      const sx = clientX - rect.left;
+      const sy = clientY - rect.top;
       // 지도 밖(콘솔 패널, 유저 목록 등)에서 손을 뗀 건 "취소"로 취급 — 캔버스 밖 좌표까지
       // 그대로 world로 환산해 실제 tp를 쏘면 엉뚱한 곳(바다·공허 등)으로 보낼 수 있다.
       if (sx >= 0 && sx <= rect.width && sy >= 0 && sy <= rect.height) {
@@ -477,13 +483,122 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     }
     playerDragTarget = null;
     draw();
+  };
+
+  canvas.addEventListener("mousedown", (event) => pointerDown(event.clientX, event.clientY));
+  window.addEventListener("mousemove", (event) => pointerMove(event.clientX, event.clientY));
+  window.addEventListener("mouseup", (event) => pointerUp(event.clientX, event.clientY));
+
+  // 화면 좌표 하나를 고정한 채 scale만 바꾼다(그 지점 아래 월드 좌표가 확대/축소 후에도
+  // 그대로 유지되게 origin을 보정) — 휠 줌과 핀치 줌이 이 로직을 공유한다.
+  const zoomAt = (screenX, screenY, newScale) => {
+    const before = screenToWorld(screenX, screenY);
+    scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+    const after = screenToWorld(screenX, screenY);
+    originX += before.x - after.x;
+    originZ += before.z - after.z;
+  };
+
+  // ---- 터치: 손가락 1개 = 팬/클릭/드래그-텔레포트(위 포인터 로직 재사용), 손가락 2개 = 핀치줌.
+  let pinchIds = null; // [identifier, identifier] — 인덱스가 아니라 손가락 식별자로 추적
+  let pinchStartDist = null;
+  let pinchStartScale = null;
+  const touchDistance = (t0, t1) => Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  const touchMidpoint = (t0, t1) => ({ x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 });
+  const findTouch = (touchList, id) => Array.prototype.find.call(touchList, (t) => t.identifier === id) ?? null;
+  const resetPinch = () => {
+    pinchIds = null;
+    pinchStartDist = null;
+    pinchStartScale = null;
+  };
+
+  canvas.addEventListener(
+    "touchstart",
+    (event) => {
+      event.preventDefault();
+      if (event.touches.length >= 2) {
+        // 핀치 시작 — 한 손가락 팬/드래그가 이미 진행 중이었으면 취소. 처음 잡힌 두 손가락의
+        // identifier를 기억해서, 이후 세 번째 손가락이 스쳐도 엉뚱한 쌍으로 안 갈아탄다.
+        dragging = false;
+        playerDragTarget = null;
+        const [t0, t1] = event.touches;
+        pinchIds = [t0.identifier, t1.identifier];
+        // 두 손가락이 거의 같은 지점에서 시작하면 거리가 0에 가까워 이후 나눗셈이 NaN/Infinity가
+        // 될 수 있다 — 최소 1px로 바닥을 깔아둔다.
+        pinchStartDist = Math.max(touchDistance(t0, t1), 1);
+        pinchStartScale = scale;
+        return;
+      }
+      if (event.touches.length === 1) {
+        pointerDown(event.touches[0].clientX, event.touches[0].clientY);
+      }
+    },
+    { passive: false },
+  );
+  canvas.addEventListener(
+    "touchmove",
+    (event) => {
+      event.preventDefault();
+      if (pinchIds) {
+        const t0 = findTouch(event.touches, pinchIds[0]);
+        const t1 = findTouch(event.touches, pinchIds[1]);
+        if (!t0 || !t1) return; // 추적 중이던 두 손가락 중 하나가 사라짐 — 다음 touchstart를 기다림
+        const rect = canvas.getBoundingClientRect();
+        const mid = touchMidpoint(t0, t1);
+        zoomAt(mid.x - rect.left, mid.y - rect.top, pinchStartScale * (touchDistance(t0, t1) / pinchStartDist));
+        draw();
+        scheduleSync();
+        return;
+      }
+      if (event.touches.length === 1) {
+        pointerMove(event.touches[0].clientX, event.touches[0].clientY);
+      }
+    },
+    { passive: false },
+  );
+  canvas.addEventListener(
+    "touchend",
+    (event) => {
+      if (event.touches.length < 2) resetPinch();
+      if (event.touches.length === 1) {
+        // 핀치 중 손가락 하나를 뗀 경우 — 남은 손가락으로 팬을 자연스럽게 이어간다. 클릭
+        // 판정(hitTestMarker)을 거치지 않고 팬 상태를 직접 세팅한다 — pointerDown을 타면 두
+        // 손가락을 거의 동시에 뗄 때 곧바로 다음 touchend가 와서 "제자리 클릭"으로 오인해
+        // 마커를 고정하거나 텔레포트를 쏠 수 있다(이미 드래그 중인 것으로 시작해 막는다).
+        const t = event.touches[0];
+        dragging = true;
+        dragStart = { x: t.clientX, y: t.clientY, originX, originZ };
+        dragMoved = CLICK_DRAG_THRESHOLD;
+        playerDragTarget = null;
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+      if (event.touches.length === 0) {
+        hoverPoint = null; // 터치는 hover 개념이 없음 — 마우스의 mouseleave와 대응.
+        if (event.changedTouches.length > 0) {
+          const t = event.changedTouches[0];
+          pointerUp(t.clientX, t.clientY);
+        }
+      }
+    },
+    { passive: false },
+  );
+  canvas.addEventListener("touchcancel", () => {
+    // 팬/핀치/드래그 도중 제스처가 깨지면(OS 스와이프, 알림, 브라우저 뒤로가기 제스처 등
+    // touchend 없이 끊기는 경우) 상태가 눌어붙지 않게 전부 원점으로 되돌린다.
+    dragging = false;
+    playerDragTarget = null;
+    resetPinch();
+    hoverPoint = null;
+    canvas.style.cursor = "grab";
+    draw();
   });
 
   // 실제로 드래그하지 않은(제자리) 클릭만 마커 포커스로 취급 — 지도를 드래그하다가
   // 마커 위에서 손을 뗐다고 갑자기 화면이 튀면 안 된다.
-  const handleClick = (event) => {
+  const handleClick = (clientX, clientY) => {
     const rect = canvas.getBoundingClientRect();
-    const target = hitTestMarker(event.clientX - rect.left, event.clientY - rect.top);
+    const target = hitTestMarker(clientX - rect.left, clientY - rect.top);
     if (!target) return;
     if (target.category === "spawn") {
       // 스폰 포인트는 고정된 지점이라 lockOnto(엔티티 추적용)로는 못 다룬다 — 그냥 한 번 이동.
@@ -514,12 +629,8 @@ export const createMap = ({ canvas, statusEl, onPlayersUpdate, onFocusChange, on
     (event) => {
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const before = screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
       const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
-      scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
-      const after = screenToWorld(event.clientX - rect.left, event.clientY - rect.top);
-      originX += before.x - after.x; // 커서 아래 지점이 그대로 고정되도록 보정.
-      originZ += before.z - after.z;
+      zoomAt(event.clientX - rect.left, event.clientY - rect.top, scale * factor);
       draw();
       scheduleSync();
     },

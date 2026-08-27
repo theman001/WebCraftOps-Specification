@@ -47,6 +47,10 @@
         --space-4: 1rem;
         --space-6: 1.5rem;
 
+        /* 모바일 하단 고정 탭바 최소 높이 — .tabs의 min-height와 .shell의 여백 계산이
+           이 값 하나를 같이 참조해야, 버튼 크기를 바꿔도 콘텐츠가 바에 가려지지 않는다. */
+        --mobile-navbar-h: 60px;
+
         --motion-fast: 100ms;
         --motion: 160ms;
         --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
@@ -503,6 +507,7 @@
         background: var(--stone-950);
         cursor: grab;
         display: block;
+        touch-action: none; /* 브라우저 기본 스크롤/핀치줌과 충돌 안 하게 — 팬/핀치는 map.js가 직접 처리 */
       }
 
       .entity-toggles {
@@ -594,6 +599,12 @@
         margin: 0;
       }
 
+      /* 명령어 탭 결과 로그는 콘솔 탭보다 화면을 덜 차지해야 해서 더 낮게 잡는다 —
+         인라인 style이었으나 그러면 미디어쿼리로도 못 덮어써서 클래스로 뺐다. */
+      .console-log--compact {
+        height: 200px;
+      }
+
       .console-command-row {
         display: flex;
         gap: var(--space-2);
@@ -621,15 +632,86 @@
         }
       }
 
+      /* ---- 적응형 브레이크포인트: 태블릿(1024px 이하)/모바일(640px 이하) 각각 별도
+         레이아웃 규칙 — 유동적으로 줄어드는 게 아니라 구간마다 의도적으로 다르게 짠다. ---- */
+
+      @media (max-width: 1024px) {
+        .shell {
+          max-width: 100%;
+        }
+        .map-canvas {
+          height: min(60vh, 480px);
+        }
+      }
+
       @media (max-width: 640px) {
         .shell {
-          padding: 0 var(--space-3) var(--space-4);
+          /* 하단 고정 탭바(패딩 8px + 버튼 44px)에 안 가리게 — 노치 있는 기기의
+             safe-area-inset-bottom도 탭바 쪽과 똑같이 더해야 실제 바 높이만큼 확보된다. */
+          padding: 0 var(--space-3) calc(var(--space-4) + var(--mobile-navbar-h) + env(safe-area-inset-bottom, 0px));
         }
         .topbar h1 {
           font-size: 1.2rem;
         }
         .grid-list {
           grid-template-columns: 1fr;
+        }
+        .map-canvas {
+          height: min(50vh, 380px);
+        }
+        .console-log {
+          height: 260px;
+        }
+        .console-log--compact {
+          height: 160px;
+        }
+        /* 상단 바에서는 제목/연결 상태만 남기고, 탭 네비게이션은 화면 하단 고정바로
+           옮긴다 — 손가락이 자연스럽게 닿는 위치(엄지 구역)에 두는 모바일 적응형 패턴.
+           DOM은 그대로(#tabNav 하나) 두고 위치만 CSS로 바꾼다. */
+        .tabs {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 10;
+          justify-content: stretch;
+          min-height: var(--mobile-navbar-h);
+          padding: 4px;
+          padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+          background: var(--stone-950);
+          border-top: 2px solid var(--bevel-hi);
+        }
+        .tab-btn {
+          flex: 1;
+        }
+      }
+
+      /* ---- 터치스크린: 마우스보다 넉넉한 히트 영역이 필요하다(최소 44px 권장치). ---- */
+      @media (pointer: coarse) {
+        .btn,
+        .tab-btn,
+        .subtab-btn {
+          min-height: 44px;
+          padding: 0.7rem 1.2rem;
+        }
+        .btn-sm {
+          min-height: 38px;
+          padding: 0.5rem 0.9rem;
+        }
+        input,
+        select,
+        textarea {
+          min-height: 44px;
+          padding: 0.75rem 0.8rem;
+          font-size: 1rem; /* 16px 미만 입력창은 iOS 사파리가 탭할 때 자동 확대시켜버림 */
+        }
+        input[type="checkbox"] {
+          min-height: 0; /* 위 input 공통 규칙의 min-height:44px는 바닥값이라 height만으론 안 밀림 */
+          width: 22px;
+          height: 22px;
+        }
+        .recent-list li {
+          padding: 0.55rem 0.9rem;
         }
       }
 
@@ -732,7 +814,7 @@
           </div>
           <div class="card">
             <h2 style="margin-bottom: var(--space-3)">실행 결과</h2>
-            <pre class="console-log" id="commandResultLog" style="height: 200px"></pre>
+            <pre class="console-log console-log--compact" id="commandResultLog"></pre>
           </div>
         </section>
 
