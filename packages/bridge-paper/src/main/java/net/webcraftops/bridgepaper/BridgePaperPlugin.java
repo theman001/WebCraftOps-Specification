@@ -109,8 +109,12 @@ public final class BridgePaperPlugin extends JavaPlugin {
         if (originalErr != null) {
             System.setErr(originalErr);
         }
-        // SseBroadcaster는 더 이상 스레드/실행기를 직접 소유하지 않는다(연결마다 이미 있는
-        // SseStreamHandler의 스레드를 재사용) — 여기서 따로 정리할 게 없다. httpServer.stop()이
-        // 새 연결을 막고, 남아있던 연결 스레드는 각자의 finally에서 unsubscribe()로 정리된다.
+        // SseStreamHandler/MapTileHandler의 전용 풀(static)은 여기서 일부러 안 끈다 —
+        // 한 번 shutdown하면 그 ExecutorService는 다시 못 쓰는데, 이 프로젝트의 배포
+        // 방식은 항상 컨테이너 전체 재시작(docker compose up --force-recreate)이라 JVM
+        // 자체가 곧 죽는다(그러면 어차피 다 정리됨). 대신 만약 나중에 플러그인 매니저로
+        // 같은 JVM에서 disable→enable만 하는 식으로 운영이 바뀌면, shutdown을 걸어뒀을 때
+        // 재활성화 후 모든 타일/SSE 요청이 영원히 실패하는 쪽이 스레드 몇 개 남는 것보다
+        // 더 나쁘다 — 그래서 굳이 끄지 않는다.
     }
 }

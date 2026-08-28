@@ -407,7 +407,11 @@ export const createMap = ({
       })
       .then((blob) => createImageBitmap(blob))
       .then((bitmap) => {
-        if (gen === loadGeneration) {
+        // gen 체크만으론 부족하다 — 세대는 그대로인데 syncTiles()가 뷰포트 밖으로 나간
+        // 이 타일만 개별적으로 tiles에서 지운(그러나 abort는 아직 못 따라잡은) 경우가
+        // 있을 수 있다. tiles.get(tileKey)가 지금도 이 entry 그대로인지까지 확인해야
+        // "정말 지금 쓰는 타일"인지 알 수 있다.
+        if (gen === loadGeneration && tiles.get(tileKey) === entry) {
           entry.img = bitmap;
           entry.status = "ready";
           draw();
@@ -434,8 +438,25 @@ export const createMap = ({
   const loadTile = (cx, cz, bust = false) => {
     if (!currentBridgeUrl) return;
     const tileKey = key(cx, cz);
+    // 캐시버스팅(map/events로 이미 떠 있는 타일을 다시 받는 경우) — 지금 entry에 이미
+    // 그려진 ImageBitmap이 있으면 새 placeholder로 덮어쓰기 전에 반납해야 GC를 기다리지
+    // 않고 바로 메모리가 풀린다. 아직 응답을 못 받은(진행 중인) 이전 요청이 있으면
+    // 그 컨트롤러도 없이 entry를 덮어쓰면 그 요청이 tiles에서 손을 놓쳐(orphan) 나중에
+    // abort() 대상에서 빠져버리니, 실제로 끊어준다.
+    const existing = tiles.get(tileKey);
+    existing?.controller?.abort();
+    existing?.img?.close();
+    // 아직 시작도 안 한(대기열에만 있는) 같은 타일 요청이 있으면 하나 더 쌓지 않는다 —
+    // 안 그러면 나중에 pumpTileQueue가 같은 타일을 두 번 실제로 요청하게 된다. 이미
+    // 대기 중인 항목이 캐시버스팅이 아니었는데 이번 호출이 캐시버스팅이면 그 플래그만
+    // 살려준다.
+    const queuedItem = tileLoadQueue.find((item) => key(item.cx, item.cz) === tileKey);
+    if (queuedItem) {
+      queuedItem.bust = queuedItem.bust || bust;
+    } else {
+      tileLoadQueue.push({ cx, cz, bust });
+    }
     tiles.set(tileKey, { img: null, status: "loading" });
-    tileLoadQueue.push({ cx, cz, bust });
     pumpTileQueue();
   };
 
@@ -467,11 +488,23 @@ export const createMap = ({
         loadTile(cx, cz);
       }
     }
+    // 뷰포트를 빠르게 바꾸면(예: 휠을 빠르게 내려 줌아웃) 방금 요청한 타일이 다음 순간
+    // 바로 안 보이는 영역이 될 수 있다 — 그 요청을 그냥 방치하면 서버는 이미 화면에서
+    // 사라진 타일을 계속 렌더링/전송하느라 부하를 받는다. 그래서 더 이상 안 보이는
+    // 타일은 (1) 아직 시작도 안 한 대기열 항목이면 대기열에서 빼버리고 (2) 이미 나간
+    // 요청이면 실제로 abort()해서 끊는다.
     for (const tileKey of Array.from(tiles.keys())) {
       if (!desired.has(tileKey)) {
-        tiles.get(tileKey).img?.close(); // ImageBitmap은 참조만 버리면 GC를 기다려야 함 — 바로 반납.
+        const tile = tiles.get(tileKey);
+        tile.controller?.abort();
+        tile.img?.close(); // ImageBitmap은 참조만 버리면 GC를 기다려야 함 — 바로 반납.
         tiles.delete(tileKey);
       }
+    }
+    if (tileLoadQueue.length > 0) {
+      const kept = tileLoadQueue.filter(({ cx, cz }) => desired.has(key(cx, cz)));
+      tileLoadQueue.length = 0;
+      tileLoadQueue.push(...kept);
     }
   };
 
