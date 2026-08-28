@@ -47,8 +47,12 @@ const mapPlayerListItems = new Map(); // uuid -> li
 const renderMapPlayerList = (players) => {
   // 엔티티 스트림은 이제 모든 월드를 함께 보내므로(map.js 참고), 지도 탭 목록은 지금
   // 보고 있는 월드 소속만 걸러서 보여준다 — 명령어 탭 드롭다운은 이걸 거치지 않고
-  // 전체(latestOnlinePlayers)를 쓴다(어느 월드에 있든 대상으로 고를 수 있어야 함).
-  const inCurrentWorld = players.filter((player) => player.world === mapInstance.getCurrentWorldId());
+  // 전체(latestOnlinePlayers)를 쓴다(어느 월드에 있든 대상으로 고를 수 있어야 함). world
+  // 필드가 없으면(재배포 전 구버전 bridge-paper) 걸러내지 않는다 — map.js의 같은 필터와
+  // 동일한 하위호환 규칙.
+  const inCurrentWorld = players.filter(
+    (player) => player.world === undefined || player.world === mapInstance.getCurrentWorldId(),
+  );
   if (inCurrentWorld.length === 0) {
     mapPlayerListItems.clear();
     mapPlayerList.innerHTML = '<li class="empty-note" style="cursor: default">접속한 유저가 없습니다.</li>';

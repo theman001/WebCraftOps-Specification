@@ -43,6 +43,15 @@ public final class SseStreamHandler implements HttpHandler {
 
         BlockingQueue<String> queue = broadcaster.subscribe(out);
         try {
+            // com.sun.net.httpserver는 청크 응답의 헤더를 첫 body write 전까지 실제로
+            // 흘려보내지 않는다(실측 확인) — 그 첫 write를 이벤트가 생길 때까지(최대
+            // PING_INTERVAL_MS) 기다리면, 조용한 스트림(지도 변경 이벤트처럼 드문 경우)에
+            // 접속한 클라이언트의 EventSource onopen이 그만큼 늦게 뜬다("연결 중..."이
+            // 계속 떠 있는 것처럼 보임). 그래서 연결하자마자 핑을 한 번 즉시 흘려보낸다.
+            out.write(':');
+            out.write('\n');
+            out.write('\n');
+            out.flush();
             while (!Thread.currentThread().isInterrupted()) {
                 String line = queue.poll(PING_INTERVAL_MS, TimeUnit.MILLISECONDS);
                 if (line != null) {
